@@ -1,0 +1,14 @@
+name = "GoodnessOfFit"
+uuid = "7e00816e-e062-11e8-1510-e3ae09e3faed"
+authors = ["tor.erlend95@gmail.com <tor.erlend95@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Optim = "429524aa-4258-5aef-a3af-852621145aeb"
+SharedArrays = "1a1011a3-84de-559e-8e89-a11a2f7dc383"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

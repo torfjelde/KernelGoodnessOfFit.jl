@@ -1,0 +1,51 @@
+# General
+abstract type Kernel end
+
+function kernel(k::Kernel, x::AbstractVector, y::AbstractVector) end
+
+kernel(k::Kernel, x::AbstractVector) = begin
+    y -> kernel(k, x, y)
+end
+
+kernel(k::Kernel) = begin
+    (x, y) -> kernel(k, x, y)
+end
+
+### Gaussian Radial Basis Function
+struct GaussianRBF <: Kernel
+    gamma::Number
+end
+
+kernel(k::GaussianRBF, x::AbstractVector, y::AbstractVector) = begin
+    # added factor of 0.5 to get same result as code attached to paper
+    exp(- 0.5 * k.gamma^(-2) * sum((x - y).^2))
+end
+
+kernel(k::GaussianRBF, x::AbstractVector, y::AbstractVector, γ::Float64) = begin
+    # added factor of 0.5 to get same result as code attached to paper
+    exp(- 0.5 * γ^(-2) * sum((x - y).^2))
+end
+
+### Derivatives
+
+# define the necessary derivatives of kernel
+function k_dx(::Kernel, x::AbstractArray, y::AbstractArray) end
+function k_dy(::Kernel, x::AbstractArray, y::AbstractArray) end
+function k_dxdy(::Kernel, x::AbstractArray, y::AbstractArray) end
+
+# TODO: make derivatives using `SymPy` instead, as we can simply the expressions
+# for numerical stability!
+# => NOPE. Can't do this for arbitrary dimensions...
+
+"Overloads the derivative operations for `kernel`."
+macro make_derivatives(kernel)
+    # call `eval` to overload methods in scope
+    eval(quote
+        k_dx(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, z, y), x);
+        k_dy(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, x, z), y);
+        k_dxdy(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.jacobian(z -> k_dx(k, x, z), y);
+    end)
+end
+
+# does so for the relevant kernels
+@make_derivatives GaussianRBF
