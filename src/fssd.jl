@@ -5,9 +5,6 @@ using Distributions
 using ForwardDiff
 using Optim
 
-# using GoodnessOfFit  # Julia 0.6
-# using .GoodnessOfFit  # Julia 1.0
-
 
 struct FSSDTest <: GoodnessOfFitTest
     kernel::Kernel
