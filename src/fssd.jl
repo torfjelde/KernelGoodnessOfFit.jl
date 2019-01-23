@@ -179,7 +179,9 @@ function perform(k::Kernel, vs, xs, p; α = 0.05, num_simulate = 1000)
 
     # compute asymptotics under H₀
     μ, Σ̂ = Σₚ(τ_from_Ξ(Ξ))
-    ω = eigvals(Σ̂)
+
+    # HACK: this sometimes end up with complex-valued eigenvalues (imaginary party < e^{-18}) → conert to real
+    ω = real.(eigvals(Σ̂))
 
     # simulate under H₀
     draws = randn(length(ω), num_simulate)
