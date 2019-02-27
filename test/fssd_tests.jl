@@ -1,4 +1,4 @@
-using Distributions, ForwardDiff, ReverseDiff, GoodnessOfFit
+using Test, Distributions, ForwardDiff, ReverseDiff, GoodnessOfFit
 
 # setup the problem
 rbf_ = GaussianRBF(1.0)
@@ -15,13 +15,13 @@ n_ = 400
 xs_ = rand(p_, n_)
 
 # new vs old: verify that new implementation is correct
-begin
+@testset "fssd vs fssd_old: eq" begin
     @test GoodnessOfFit.fssd(rbf_, q_, xs_, vs_) == GoodnessOfFit.fssd_old(rbf_, q_, xs_, vs_)
     @test GoodnessOfFit.fssd(rbf_, p_, xs_, vs_) == GoodnessOfFit.fssd_old(rbf_, p_, xs_, vs_)
 end
 
 # ensure new method is faster :)
-begin
+@testset "fssd vs fssd_old: perf" begin
     t1 = @elapsed GoodnessOfFit.fssd(rbf_, q_, xs_, vs_) 
     t2 = @elapsed GoodnessOfFit.fssd_old(rbf_, q_, xs_, vs_)
 
@@ -29,7 +29,7 @@ begin
 end
 
 # sizes: testing of sizes
-begin
+@testset "shapes" begin
     # setup for tests
     Ξ_ = GoodnessOfFit.compute_Ξ(rbf_, q_, xs_, vs_)
 
@@ -51,7 +51,7 @@ begin
 end
 
 # gradients: verify gradients
-begin
+@testset "gradient shapes" begin
     Δv = ForwardDiff.gradient(v -> GoodnessOfFit.fssd_H₁_opt_factor(rbf_, q_, xs_, v), vs_)
     @test size(Δv) == size(vs_)
 
@@ -64,7 +64,7 @@ end
 
 
 # values: testing specific values
-begin
+@testset "specific values" begin
     V = reshape([0; 0], (2, 1))
 
     X = [1.0 2.0 3.0; 2.0 3.0 4.0]
@@ -91,8 +91,18 @@ end
 
 # optimizing the power
 @testset "optimize_power" begin
-    t_forward = @elapsed res_forward = GoodnessOfFit.optimize_power(rbf_, vs_, xs_, q_; diff = :forward)
-    t_backward = @elapsed res_backward = GoodnessOfFit.optimize_power(rbf_, vs_, xs_, q_; diff = :backward)
+    # because of compilation and stuff, running them in sequence is heavily biased towards
+    # the ones being run last
+    GoodnessOfFit.optimize_power(rbf_, vs_, xs_, q_; diff = :difference)
+    GoodnessOfFit.optimize_power(rbf_, vs_, xs_, q_; diff = :backward)
+    GoodnessOfFit.optimize_power(rbf_, vs_, xs_, q_; diff = :forward)
+
+    μs = 1:10
+
+    t_difference = mean([@elapsed GoodnessOfFit.optimize_power(rbf_, vs_, xs_, MultivariateNormal([μ, 5.0], [σ² 0; 0 σ²]); diff = :difference) for μ ∈ μs])
+    t_forward = mean([@elapsed GoodnessOfFit.optimize_power(rbf_, vs_, xs_, MultivariateNormal([μ, 5.0], [σ² 0; 0 σ²]); diff = :forward) for μ ∈ μs])
+    t_backward = mean([@elapsed GoodnessOfFit.optimize_power(rbf_, vs_, xs_, MultivariateNormal([μ, 5.0], [σ² 0; 0 σ²]); diff = :backward) for μ ∈ μs])
 
     @test t_backward < t_forward
+    @test t_forward < t_difference
 end
