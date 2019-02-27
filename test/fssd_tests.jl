@@ -1,4 +1,4 @@
-using Distributions, ForwardDiff, GoodnessOfFit
+using Distributions, ForwardDiff, ReverseDiff, GoodnessOfFit
 
 # setup the problem
 rbf_ = GaussianRBF(1.0)
@@ -54,6 +54,9 @@ end
 begin
     Δv = ForwardDiff.gradient(v -> GoodnessOfFit.fssd_H₁_opt_factor(rbf_, q_, xs_, v), vs_)
     @test size(Δv) == size(vs_)
+
+    Δv = ReverseDiff.gradient(v -> GoodnessOfFit.fssd_H₁_opt_factor(rbf_, q_, xs_, v), vs_)
+    @test size(Δv) == size(vs_)
     
     # fails for some reason; but does not fail when I actually run the test...interesting, eh?
     # Δσₖ = ForwardDiff.derivative(σₖ -> fssd_H₁(GaussianRBF(σₖ), q_, xs_, vs_), 1.0)
@@ -84,4 +87,12 @@ begin
     μ_, Σ_ = GoodnessOfFit.Σₚ(τ_)
 
     @test GoodnessOfFit.σ²_H₁(μ_, Σ_) ≈ σ₁²
+end
+
+# optimizing the power
+@testset "optimize_power" begin
+    t_forward = @elapsed res_forward = GoodnessOfFit.optimize_power(rbf_, vs_, xs_, q_; diff = :forward)
+    t_backward = @elapsed res_backward = GoodnessOfFit.optimize_power(rbf_, vs_, xs_, q_; diff = :backward)
+
+    @test t_backward < t_forward
 end
