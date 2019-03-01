@@ -5,6 +5,8 @@ using Distributions
 using ForwardDiff, ReverseDiff
 using Optim
 
+import HypothesisTests: pvalue, testname, show_params, default_tail, population_param_of_interest
+
 # TODO: Distinguish between FSSDopt and FSSDrand
 
 
@@ -39,6 +41,98 @@ struct FSSDResult <: GoodnessOfFitResult
     result::Symbol # :reject or :accept
 
     V  # test locations
+end
+
+abstract type FSSD <: GoodnessOfFitTest end
+set_locs!(t::FSSD, V::AbstractArray) = begin
+    t.V = V
+end
+
+# test stuff
+population_param_of_interest(t::T where T <: FSSD) = ("Finite-Set Stein Discrepancy (FSSD)", 0, "?")
+default_tail(t::T where T <: FSSD) = :tail
+show_params(io::IO, t::FSSD, ident) = begin
+    println(io, ident, "kernel:           ", t.k)
+    println(io, ident, "test locations:   ", t.V)
+    println(io, ident, "num. simulate H₀: ", t.num_simulate)
+    println(io, ident, "q:                ", t.q)
+end
+
+mutable struct FSSDopt{T} <: FSSD where T <: Kernel
+    x::AbstractArray # data
+    q                # a "distribution"; only requires `gradlogpdf(d, x)` to be defined
+    k::T
+    V::AbstractArray # have some default value
+    num_simulate::Int
+end
+
+mutable struct FSSDrand{T} <: FSSD where T  <: Kernel
+    x::AbstractArray
+    q
+    k::T
+    V::AbstractArray # have some default value
+    num_simulate::Int
+end
+
+testname(::FSSDopt) = "Finite-Set Stein Discrepancy optimized (FSSD-opt)"
+testname(::FSSDrand) = "Finite-Set Stein Discrepancy randomized (FSSD-rand)"
+
+initialize!(t::FSSD) = begin
+    # initialize test locations
+    p = fit_mle(MvNormal, t.x)
+    t.V = rand(p, size(t.V, 2))
+end
+
+initialize!(t::FSSDrand{GaussianRBF}) = begin
+    # initialize test locations
+    p = fit_mle(MvNormal, t.x)
+    t.V = rand(p, size(t.V, 2))
+
+    t.k = GaussianRBF(maximum(cov(p)))
+end
+
+# initialize!(t::FSSD{::GaussianRBF}) = begin
+#     # use the maximum variance
+#     set_params!(t.k, var(t.x))
+# end
+
+pvalue(t::FSSDrand) = begin
+    initialize!(t)
+    
+    d, n = size(t.x)
+    
+    # compute
+    res = perform(t)
+
+    res.p_val
+end
+
+pvalue(t::FSSDopt) = begin
+    d, n = size(t.x)
+    
+    # initialize the kernel → done differently based on type of kernel
+    initialize!(t)
+
+    # optimize params
+    optimize_power!(t)
+
+    # perform
+    res = perform(t)
+
+    res.p_val
+end
+
+optimize_power!(t::FSSDopt{T} where T <: Kernel) = begin
+    d, J = size(t.V)
+
+    # update kernel parameters inplace
+    kernel_params, V, opt_res = optimize_power(t.k, t.V, t.x, t.q)
+
+    # update kernel
+    set_params!(t.k, kernel_params)
+
+    # update test locations
+    set_locs!(t, V)
 end
 
 # Objective is to maximize FSSD^2 / σ₁ where
@@ -123,6 +217,7 @@ function fssd_old(k, p, xs, vs)
 end
 
 function compute_Ξ(k, p, xs, vs)
+    # TODO: change to use `size(vs, 2)` and so on
     J = size(vs)[2]  # number of test points
     n = size(xs)[2]  # number of samples
     d = size(xs)[1]  # dimension of the inputs
@@ -177,7 +272,7 @@ end
 
 function unpack(k::GaussianRBF, ζ::AbstractVector, d::Integer, J::Integer)
     # σₖ, V
-    return reshape(ζ[1:end - 1], d, J), ζ[end]
+    return ζ[end], reshape(ζ[1:end - 1], d, J)
 end
 
 function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :forward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, β_H₁ = 0.0, ε = 0.01)
@@ -186,7 +281,7 @@ function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff
     # define objective (don't call unwrap_ζ for that perf yo)
     f(ζ) = begin
         # TODO: add regularization?
-        V, σ = unpack(k, ζ, d, J)
+        σ, V = unpack(k, ζ, d, J)
 
         # add regularization to the parameter
         # TODO: currently using matrix norm for `V` => should we use a vector for β_V and use vector norm?
@@ -246,6 +341,10 @@ end
 # 1. Choose kernel and initialize kernel parameters + test locations
 # 2. [Optional] Optimize over kernel parameters + test locations
 # 3. Perform test
+
+function perform(t::FSSD)
+    perform(t.k, t.V, t.x, t.q; num_simulate = t.num_simulate)
+end
 
 function perform(k::Kernel, vs, xs, p; α = 0.05, num_simulate = 1000)
     d, n = size(xs)

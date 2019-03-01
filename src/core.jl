@@ -1,7 +1,10 @@
+using HypothesisTests
+import HypothesisTests: HypothesisTest, pvalue
+
 """
 Goodness of Fit Test.
 """
-abstract type GoodnessOfFitTest end
+abstract type GoodnessOfFitTest <: HypothesisTest end
 
 # implement this for whatever gof-test
 """

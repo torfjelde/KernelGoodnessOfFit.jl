@@ -3,6 +3,10 @@ abstract type Kernel end
 
 function kernel(k::Kernel, x::AbstractVector, y::AbstractVector) end
 
+function get_params(k::Kernel) end
+function set_params!(k::Kernel, params) end
+
+# partial evaluations
 kernel(k::Kernel, x::AbstractVector) = begin
     y -> kernel(k, x, y)
 end
@@ -11,17 +15,23 @@ kernel(k::Kernel) = begin
     (x, y) -> kernel(k, x, y)
 end
 
-### Gaussian Radial Basis Function
-struct GaussianRBF <: Kernel
-    gamma::Number
+### Gaussian Radial Basis Function ###
+mutable struct GaussianRBF <: Kernel
+    gamma
 end
+
+get_params(k::GaussianRBF, gamma) = [gamma]
+set_params!(k::GaussianRBF, gamma::Number) = begin
+    k.gamma = gamma
+end
+set_params!(k::GaussianRBF, gamma::AbstractArray) = set_params!(k, first(gamma))
 
 kernel(k::GaussianRBF, x::AbstractVector, y::AbstractVector) = begin
     # added factor of 0.5 to get same result as code attached to paper
     exp(- 0.5 * k.gamma^(-2) * sum((x - y).^2))
 end
 
-kernel(k::GaussianRBF, x::AbstractVector, y::AbstractVector, γ::Float64) = begin
+kernel(k::GaussianRBF, x::AbstractVector, y::AbstractVector, γ::Number) = begin
     # added factor of 0.5 to get same result as code attached to paper
     exp(- 0.5 * γ^(-2) * sum((x - y).^2))
 end
