@@ -206,7 +206,7 @@ function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff
     if diff == :forward
         ∇f! = (F, ζ) -> ForwardDiff.gradient!(F, f, ζ)
     elseif diff == :backward
-        ∇f! = (F, ζ) -> ForwardDiff.gradient!(F, f, ζ)
+        ∇f! = (F, ζ) -> ReverseDiff.gradient!(F, f, ζ)
     else
         throw(ArgumentError("diff = $diff not not supported"))
     end
