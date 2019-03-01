@@ -166,7 +166,8 @@ function fssd_H₁_opt_factor(k, p, xs, vs; ε = 0.01, β_H₁ = 0.0)
 
     # asymptotic under H₁ depends O(√n) on (FSSD² / σ₁² + ε)
     # subtract regularization term because we're going to multiply by minus
-    return (s ./ (σ₁ + ε)) .- β_H₁ * σ₁
+    # also, we want to stop it from being too SMALL, so regularize inverse of it
+    return (s ./ (σ₁ + ε)) .- (1.0 / β_H₁ * σ₁)
 end
 
 ### Gaussian kernel optimization
