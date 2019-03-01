@@ -38,13 +38,23 @@ function k_dxdy(::Kernel, x::AbstractArray, y::AbstractArray) end
 # => NOPE. Can't do this for arbitrary dimensions...
 
 "Overloads the derivative operations for `kernel`."
-macro make_derivatives(kernel)
+macro make_derivatives(kernel, autodiff::Symbol = :forward)
     # call `eval` to overload methods in scope
-    eval(quote
-        k_dx(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, z, y), x);
-        k_dy(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, x, z), y);
-        k_dxdy(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.jacobian(z -> k_dx(k, x, z), y);
-    end)
+    if autodiff == :forward
+        eval(quote
+             k_dx(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, z, y), x);
+             k_dy(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, x, z), y);
+             k_dxdy(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.jacobian(z -> k_dx(k, x, z), y);
+             end)
+    elseif autodiff == :backward
+        eval(quote
+             k_dx(k::$kernel, x::AbstractArray, y::AbstractArray) = ReverseDiff.gradient(z -> kernel(k, z, y), x);
+             k_dy(k::$kernel, x::AbstractArray, y::AbstractArray) = ReverseDiff.gradient(z -> kernel(k, x, z), y);
+             k_dxdy(k::$kernel, x::AbstractArray, y::AbstractArray) = ReverseDiff.jacobian(z -> k_dx(k, x, z), y);
+             end)
+    else
+        throw(ValueError("unsupported autodiff method $autodiff"))
+    end
 end
 
 # does so for the relevant kernels
