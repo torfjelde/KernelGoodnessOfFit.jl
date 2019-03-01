@@ -171,20 +171,13 @@ function fssd_H₁_opt_factor(k, p, xs, vs; ε = 0.01, β_H₁ = 0.0)
 end
 
 ### Gaussian kernel optimization
-function wrap_ζ(k::GaussianRBF, vs)
-    d, J = size(vs)
-    
-    # pad matrix
-    σₖ_arr = zeros(d, 1)
-    σₖ_arr[1] = k.gamma
-
-    # combine
-    hcat(vs, σₖ_arr)
+function pack(k::GaussianRBF, vs::AbstractArray)
+    vcat(k.gamma, vs...)
 end
 
-function unwrap_ζ(k::GaussianRBF, ζ)
+function unpack(k::GaussianRBF, ζ::AbstractVector, d::Integer, J::Integer)
     # σₖ, V
-    return first(ζ[:, end]), ζ[:, 1:end - 1]
+    return reshape(ζ[1:end - 1], d, J), ζ[end]
 end
 
 function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :forward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, β_H₁ = 0.0, ε = 0.01)
@@ -193,8 +186,7 @@ function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff
     # define objective (don't call unwrap_ζ for that perf yo)
     f(ζ) = begin
         # TODO: add regularization?
-        σ = first(ζ[:, end])
-        V = ζ[:, 1:end - 1]
+        V, σ = unpack(k, ζ, d, J)
 
         # add regularization to the parameter
         # TODO: currently using matrix norm for `V` => should we use a vector for β_V and use vector norm?
@@ -209,7 +201,7 @@ function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff
     if diff == :forward
         ∇f! = (F, ζ) -> ForwardDiff.gradient!(F, f, ζ)
     elseif diff == :backward
-        ∇f! = (F, ζ) -> ForwardDiff.gradient!(F, f, ζ)
+        ∇f! = (F, ζ) -> ReverseDiff.gradient!(F, f, ζ)
     elseif diff == :difference
         ∇f! = nothing
     else
@@ -217,7 +209,7 @@ function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff
     end
 
     # pad and combine
-    ζ₀ = wrap_ζ(k, vs)
+    ζ₀ = pack(k, vs)
 
     if method == :lbfgs
         # optimize
@@ -228,7 +220,7 @@ function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff
         end
 
         ζ = opt_res.minimizer
-        σ_, vs_ = unwrap_ζ(k, ζ)
+        σ_, vs_ = unpack(k, ζ, d, J)
         
     elseif method == :sgd
         ζ = ζ₀
@@ -242,7 +234,7 @@ function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff
             ζ = ζ - step_size * ∇f!(F, ζ)
         end
 
-        σ_, vs_ = unwrap_ζ(k, ζ)
+        σ_, vs_ = unpack(k, ζ, d, J)
     else
         error("$method not recogized as a supported method")
     end
