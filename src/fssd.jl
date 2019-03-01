@@ -157,14 +157,16 @@ end
     (4 * transpose(μ) * Σ * μ)[1]
 end
 
-function fssd_H₁_opt_factor(k, p, xs, vs; ε = 0.01)
+function fssd_H₁_opt_factor(k, p, xs, vs; ε = 0.01, β_H₁ = 0.0)
     Ξ = compute_Ξ(k, p, xs, vs)
     s = fssd(Ξ)
     τ = τ_from_Ξ(Ξ)
     μ, Σ = Σₚ(τ)
+    σ₁ = σ²_H₁(μ, Σ)
 
     # asymptotic under H₁ depends O(√n) on (FSSD² / σ₁² + ε)
-    return s ./ (σ²_H₁(μ, Σ) + ε)
+    # subtract regularization term because we're going to multiply by minus
+    return (s ./ (σ₁ + ε)) .- β_H₁ * σ₁
 end
 
 ### Gaussian kernel optimization
@@ -184,7 +186,7 @@ function unwrap_ζ(k::GaussianRBF, ζ)
     return first(ζ[:, end]), ζ[:, 1:end - 1]
 end
 
-function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :forward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, ε = 0.01)
+function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :forward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, β_H₁ = 0.0, ε = 0.01)
     d, J = size(vs)
 
     # define objective (don't call unwrap_ζ for that perf yo)
@@ -196,9 +198,9 @@ function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff
         # add regularization to the parameter
         # TODO: currently using matrix norm for `V` => should we use a vector for β_V and use vector norm?
         if β_σ > 0.0 || β_V > 0.0
-            - fssd_H₁_opt_factor(GaussianRBF(σ), p, xs, V; ε = ε) + β_σ ./ (σ^2 + 1e-6) + β_V * norm(V)
+            - fssd_H₁_opt_factor(GaussianRBF(σ), p, xs, V; ε = ε, β_H₁ = β_H₁) + β_σ ./ (σ^2 + 1e-6) + β_V * norm(V)
         else
-            - fssd_H₁_opt_factor(GaussianRBF(σ), p, xs, V; ε = ε)
+            - fssd_H₁_opt_factor(GaussianRBF(σ), p, xs, V; ε = ε, β_H₁ = β_H₁)
         end
     end
 
@@ -206,13 +208,9 @@ function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff
     if diff == :forward
         ∇f! = (F, ζ) -> ForwardDiff.gradient!(F, f, ζ)
     elseif diff == :backward
-<<<<<<< HEAD
-        ∇f! = (F, ζ) -> ReverseDiff.gradient!(F, f, ζ)
-=======
         ∇f! = (F, ζ) -> ForwardDiff.gradient!(F, f, ζ)
     elseif diff == :difference
         ∇f! = nothing
->>>>>>> origin/master
     else
         throw(ArgumentError("diff = $diff not not supported"))
     end
