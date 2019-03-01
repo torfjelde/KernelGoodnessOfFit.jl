@@ -267,12 +267,12 @@ end
 
 ### Gaussian kernel optimization
 function pack(k::GaussianRBF, vs::AbstractArray)
-    vcat(k.gamma, vs...)
+    vcat(log(k.gamma), vs...)
 end
 
 function unpack(k::GaussianRBF, ζ::AbstractVector, d::Integer, J::Integer)
     # σₖ, V
-    return ζ[end], reshape(ζ[1:end - 1], d, J)
+    return exp(ζ[end]), reshape(ζ[1:end - 1], d, J)
 end
 
 function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :forward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, β_H₁ = 0.0, ε = 0.01)
@@ -280,7 +280,6 @@ function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff
 
     # define objective (don't call unwrap_ζ for that perf yo)
     f(ζ) = begin
-        # TODO: add regularization?
         σ, V = unpack(k, ζ, d, J)
 
         # add regularization to the parameter
