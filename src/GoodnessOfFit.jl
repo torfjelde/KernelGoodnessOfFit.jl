@@ -22,6 +22,8 @@ export
     σ²_H₁,
     fssd_H₁_opt_factor,
     FSSDTest,
+    FSSDopt,
+    FSSDrand,
 
     # core
     perform

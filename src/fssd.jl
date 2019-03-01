@@ -7,8 +7,6 @@ using Optim
 
 import HypothesisTests: pvalue, testname, show_params, default_tail, population_param_of_interest
 
-# TODO: Distinguish between FSSDopt and FSSDrand
-
 
 struct FSSDTest <: GoodnessOfFitTest
     kernel::Kernel
@@ -58,14 +56,33 @@ show_params(io::IO, t::FSSD, ident) = begin
     println(io, ident, "q:                ", t.q)
 end
 
+###############
+### FSSDopt ###
+###############
 mutable struct FSSDopt{T} <: FSSD where T <: Kernel
     x::AbstractArray # data
     q                # a "distribution"; only requires `gradlogpdf(d, x)` to be defined
     k::T
     V::AbstractArray # have some default value
     num_simulate::Int
+    train_test_ratio::Float64
 end
 
+FSSDopt(x::AbstractArray, q, k::Kernel, V::AbstractArray; num_simulate = 3000, train_test_ratio = 0.5) = FSSDopt(x, q, k, V, num_simulate, train_test_ratio)
+FSSDopt(x::AbstractArray, q, k::Kernel; J::Int = 5, num_simulate = 3000, train_test_ratio = 0.5) = begin
+    d = size(x, 1)
+    V = zeros(d, J)
+    FSSDopt(x, q, k, V, num_simulate, train_test_ratio)
+end
+FSSDopt(x::AbstractArray, q; J::Int = 5, num_simulate = 3000, train_test_ratio = 0.5) = begin
+    FSSDopt(x, q, GaussianRBF(1.0); J = J, num_simulate = num_simulate, train_test_ratio = train_test_ratio)
+end
+
+testname(::FSSDopt) = "Finite-Set Stein Discrepancy optimized (FSSD-opt)"
+
+################
+### FSSDrand ###
+################
 mutable struct FSSDrand{T} <: FSSD where T  <: Kernel
     x::AbstractArray
     q
@@ -74,9 +91,20 @@ mutable struct FSSDrand{T} <: FSSD where T  <: Kernel
     num_simulate::Int
 end
 
-testname(::FSSDopt) = "Finite-Set Stein Discrepancy optimized (FSSD-opt)"
+FSSDrand(x::AbstractArray, q, k::Kernel, V::AbstractArray; num_simulate = 3000) = FSSDrand(x, q, k, V, num_simulate)
+FSSDrand(x::AbstractArray, q, k::Kernel; J::Int = 5, num_simulate = 3000) = begin
+    d = size(x, 1)
+    V = zeros(d, J)
+    FSSDrand(x, q, k, V, num_simulate)
+end
+FSSDrand(x::AbstractArray, q; J::Int = 5, num_simulate = 3000) = begin
+    FSSDrand(x, q, GaussianRBF(1.0); J = J, num_simulate = num_simulate)
+end
+
+
 testname(::FSSDrand) = "Finite-Set Stein Discrepancy randomized (FSSD-rand)"
 
+# initialization of parameters
 initialize!(t::FSSD) = begin
     # initialize test locations
     p = fit_mle(MvNormal, t.x)
@@ -88,45 +116,39 @@ initialize!(t::FSSDrand{GaussianRBF}) = begin
     p = fit_mle(MvNormal, t.x)
     t.V = rand(p, size(t.V, 2))
 
+    # set Gaussian kernel bandwith to maximum variance
     t.k = GaussianRBF(maximum(cov(p)))
 end
-
-# initialize!(t::FSSD{::GaussianRBF}) = begin
-#     # use the maximum variance
-#     set_params!(t.k, var(t.x))
-# end
 
 pvalue(t::FSSDrand) = begin
     initialize!(t)
     
-    d, n = size(t.x)
-    
-    # compute
+    # perform test
     res = perform(t)
-
     res.p_val
 end
 
 pvalue(t::FSSDopt) = begin
-    d, n = size(t.x)
-    
-    # initialize the kernel → done differently based on type of kernel
     initialize!(t)
 
     # optimize params
     optimize_power!(t)
 
-    # perform
+    # perform test
     res = perform(t)
 
     res.p_val
 end
 
 optimize_power!(t::FSSDopt{T} where T <: Kernel) = begin
+    n = size(t.x, 2)
     d, J = size(t.V)
 
+    split_idx = Integer(floor(n * t.train_test_ratio))
+    train = @view t.x[:, 1:split_idx]
+
     # update kernel parameters inplace
-    kernel_params, V, opt_res = optimize_power(t.k, t.V, t.x, t.q)
+    kernel_params, V, opt_res = optimize_power(t.k, t.V, train, t.q)
 
     # update kernel
     set_params!(t.k, kernel_params)
