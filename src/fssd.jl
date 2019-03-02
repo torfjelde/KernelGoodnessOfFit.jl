@@ -305,6 +305,8 @@ unpack(k::ExponentialKernel, ζ::AbstractVector, d::Integer, J::Integer) = (), r
 # ### Matern Kernel: do the log-exp transform to enforce positive
 # pack(k::MaternKernel, vs::AbstractArray) = vcat(log(k.ν), log(k.ρ), vs...)
 # unpack(k::MaternKernel, ζ::AbstractArray, d::Integer, J::Integer) = exp.(ζ[1:2]), reshape(ζ[3:end], d, J)
+pack(k::Matern25Kernel, vs::AbstractArray) = vcat(log(k.ρ), vs...)
+unpack(k::Matern25Kernel, ζ::AbstractArray, d::Integer, J::Integer) = exp.(ζ[1:1]), reshape(ζ[2:end], d, J)
 
 function optimize_power(k::K, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :backward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, β_H₁ = 0.0, ε = 0.01) where K <: Kernel
     d, J = size(vs)

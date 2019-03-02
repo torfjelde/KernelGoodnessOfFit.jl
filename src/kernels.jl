@@ -1,5 +1,5 @@
 using LinearAlgebra
-# import SpecialFunctions: gamma, besselk
+import SpecialFunctions: gamma, besselk
 
 # General
 abstract type Kernel end
@@ -46,6 +46,7 @@ kernel(k::ExponentialKernel, x::AbstractVector, y::AbstractVector) = begin
 end
 set_params!(k::ExponentialKernel, anything) = ()
 
+### Matern Kernel
 # ### Matern Kernel
 # # Works with FSSDrand and FSSDopt for SOME values, and only using `finite-differences` to optimize.
 # mutable struct MaternKernel <: Kernel
@@ -66,6 +67,34 @@ set_params!(k::ExponentialKernel, anything) = ()
 #     k.ν = ν
 #     k.ρ = ρ
 # end
+
+# Works with FSSDrand and FSSDopt for SOME values, and only using `finite-differences` to optimize.
+"""
+    Matern25Kernel(ρ)
+
+Matern25Kernel is a Matern kernel with ν = 2.5, and is thus 1st order differentiable, which is what we require.
+
+# Notes
+Optimization wrt. ρ is potentially unstable, and so some runs might return an error, while others wont.
+"""
+mutable struct Matern25Kernel <: Kernel
+    ρ
+end
+
+@inline function kernel(κ::Matern25Kernel, x::AbstractVector, y::AbstractVector)
+    ν = 2.5
+    
+    # squared euclidean distance
+    d = norm(x - y)
+    # d = d < eps(T) ? eps(T) : d  # If d is zero, besselk will return NaN
+    d = d < eps(Float64) ? eps(Float64) : d
+    tmp = √(2ν)*d /κ.ρ
+    return (2^(1.0 - ν)) * (tmp^ν) * besselk(ν, tmp) / gamma(ν)
+end
+get_params(k::Matern25Kernel) = [k.ρ]
+set_params!(k::Matern25Kernel, ρ) = begin
+    k.ρ = ρ
+end
 
 ### Derivatives
 
@@ -102,3 +131,4 @@ end
 @make_derivatives GaussianRBF
 @make_derivatives ExponentialKernel
 # @make_derivatives MaternKernel
+@make_derivatives Matern25Kernel
