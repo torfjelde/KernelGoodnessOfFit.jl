@@ -1,3 +1,6 @@
+using LinearAlgebra
+# import SpecialFunctions: gamma, besselk
+
 # General
 abstract type Kernel end
 
@@ -36,6 +39,34 @@ kernel(k::GaussianRBF, x::AbstractVector, y::AbstractVector, γ::Number) = begin
     exp(- 0.5 * γ^(-2) * sum((x - y).^2))
 end
 
+### Exponential kernel
+struct ExponentialKernel <: Kernel end
+kernel(k::ExponentialKernel, x::AbstractVector, y::AbstractVector) = begin
+    exp(dot(x, y))
+end
+set_params!(k::ExponentialKernel, anything) = ()
+
+# ### Matern Kernel
+# # Works with FSSDrand and FSSDopt for SOME values, and only using `finite-differences` to optimize.
+# mutable struct MaternKernel <: Kernel
+#     ν
+#     ρ
+# end
+
+# @inline function kernel(κ::MaternKernel, x::AbstractVector, y::AbstractVector)
+#     # squared euclidean distance
+#     d = norm(x - y)
+#     # d = d < eps(T) ? eps(T) : d  # If d is zero, besselk will return NaN
+#     d = d < eps(Float64) ? eps(Float64) : d
+#     tmp = √(2κ.ν)*d /κ.ρ
+#     return (2^(1.0 - κ.ν)) * (tmp^κ.ν) * besselk(κ.ν, tmp) / gamma(κ.ν)
+# end
+# get_params(k::MaternKernel) = [k.ν, k.ρ]
+# set_params!(k::MaternKernel, ν, ρ) = begin
+#     k.ν = ν
+#     k.ρ = ρ
+# end
+
 ### Derivatives
 
 # define the necessary derivatives of kernel
@@ -52,15 +83,15 @@ macro make_derivatives(kernel, autodiff::Symbol = :forward)
     # call `eval` to overload methods in scope
     if autodiff == :forward
         eval(quote
-             k_dx(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, z, y), x);
-             k_dy(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, x, z), y);
-             k_dxdy(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.jacobian(z -> k_dx(k, x, z), y);
+             @inline k_dx(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, z, y), x);
+             @inline k_dy(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, x, z), y);
+             @inline k_dxdy(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.jacobian(z -> k_dx(k, x, z), y);
              end)
     elseif autodiff == :backward
         eval(quote
-             k_dx(k::$kernel, x::AbstractArray, y::AbstractArray) = ReverseDiff.gradient(z -> kernel(k, z, y), x);
-             k_dy(k::$kernel, x::AbstractArray, y::AbstractArray) = ReverseDiff.gradient(z -> kernel(k, x, z), y);
-             k_dxdy(k::$kernel, x::AbstractArray, y::AbstractArray) = ReverseDiff.jacobian(z -> k_dx(k, x, z), y);
+             @inline k_dx(k::$kernel, x::AbstractArray, y::AbstractArray) = ReverseDiff.gradient(z -> kernel(k, z, y), x);
+             @inline k_dy(k::$kernel, x::AbstractArray, y::AbstractArray) = ReverseDiff.gradient(z -> kernel(k, x, z), y);
+             @inline k_dxdy(k::$kernel, x::AbstractArray, y::AbstractArray) = ReverseDiff.jacobian(z -> k_dx(k, x, z), y);
              end)
     else
         throw(ValueError("unsupported autodiff method $autodiff"))
@@ -69,3 +100,5 @@ end
 
 # does so for the relevant kernels
 @make_derivatives GaussianRBF
+@make_derivatives ExponentialKernel
+# @make_derivatives MaternKernel

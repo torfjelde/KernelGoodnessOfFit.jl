@@ -96,3 +96,23 @@ end
     # reject
     @test pvalue(res) ≤ 0.05
 end
+
+@testset "FSSDrand different kernels" begin
+    q = MvNormal([10.0], [1.0])
+
+    t_rbf = FSSDrand(xs, q, GoodnessOfFit.GaussianRBF(1.0))
+    t_exp = FSSDrand(xs, q, GoodnessOfFit.ExponentialKernel())
+
+    @test pvalue(t_rbf) ≥ 0.0
+    @test pvalue(t_exp) ≥ 0.0
+end
+
+@testset "FSSDopt different kernels" begin
+    q = MvNormal([10.0], [1.0])
+
+    t_rbf = FSSDopt(xs, q, GoodnessOfFit.GaussianRBF(1.0))
+    t_exp = FSSDopt(xs, q, GoodnessOfFit.ExponentialKernel())
+
+    @test pvalue(t_rbf) ≥ 0.0
+    @test pvalue(t_exp) ≥ 0.0
+end

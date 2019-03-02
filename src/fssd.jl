@@ -151,7 +151,7 @@ optimize_power!(t::FSSDopt{T} where T <: Kernel) = begin
     kernel_params, V, opt_res = optimize_power(t.k, t.V, train, t.q)
 
     # update kernel
-    set_params!(t.k, kernel_params)
+    set_params!(t.k, kernel_params...)
 
     # update test locations
     set_locs!(t, V)
@@ -294,22 +294,32 @@ end
 
 function unpack(k::GaussianRBF, ζ::AbstractVector, d::Integer, J::Integer)
     # σₖ, V
-    return exp(ζ[end]), reshape(ζ[1:end - 1], d, J)
+    return (exp(ζ[end]), ), reshape(ζ[1:end - 1], d, J)
 end
 
-function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :forward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, β_H₁ = 0.0, ε = 0.01)
+
+### Exponential kernel pack / unpack
+pack(k::ExponentialKernel, vs::AbstractArray) = vcat(vs...)
+unpack(k::ExponentialKernel, ζ::AbstractVector, d::Integer, J::Integer) = (), reshape(ζ, d, J)
+
+# ### Matern Kernel: do the log-exp transform to enforce positive
+# pack(k::MaternKernel, vs::AbstractArray) = vcat(log(k.ν), log(k.ρ), vs...)
+# unpack(k::MaternKernel, ζ::AbstractArray, d::Integer, J::Integer) = exp.(ζ[1:2]), reshape(ζ[3:end], d, J)
+
+function optimize_power(k::K, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :backward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, β_H₁ = 0.0, ε = 0.01) where K <: Kernel
     d, J = size(vs)
 
     # define objective (don't call unwrap_ζ for that perf yo)
     f(ζ) = begin
-        σ, V = unpack(k, ζ, d, J)
+        kernel_params, V = unpack(k, ζ, d, J)
+        ker = isempty(kernel_params) ? K() : K(kernel_params...)
 
         # add regularization to the parameter
-        # TODO: currently using matrix norm for `V` => should we use a vector for β_V and use vector norm?
+        # TODO: currently using matrix norm for `V` => should we use a vector for β_V and use vector nor?
         if β_σ > 0.0 || β_V > 0.0
-            - fssd_H₁_opt_factor(GaussianRBF(σ), p, xs, V; ε = ε, β_H₁ = β_H₁) + β_σ ./ (σ^2 + 1e-6) + β_V * norm(V)
+            - fssd_H₁_opt_factor(ker, p, xs, V; ε = ε, β_H₁ = β_H₁) + β_σ ./ (σ^2 + 1e-6) + β_V * norm(V)
         else
-            - fssd_H₁_opt_factor(GaussianRBF(σ), p, xs, V; ε = ε, β_H₁ = β_H₁)
+            - fssd_H₁_opt_factor(ker, p, xs, V; ε = ε, β_H₁ = β_H₁)
         end
     end
 
@@ -336,7 +346,7 @@ function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff
         end
 
         ζ = opt_res.minimizer
-        σ_, vs_ = unpack(k, ζ, d, J)
+        kernel_params_, vs_ = unpack(k, ζ, d, J)
         
     elseif method == :sgd
         ζ = ζ₀
@@ -350,12 +360,12 @@ function optimize_power(k::GaussianRBF, vs, xs, p; method::Symbol = :lbfgs, diff
             ζ = ζ - step_size * ∇f!(F, ζ)
         end
 
-        σ_, vs_ = unpack(k, ζ, d, J)
+        kernel_params_, vs_ = unpack(k, ζ, d, J)
     else
         error("$method not recogized as a supported method")
     end
 
-    σ_, vs_, opt_res
+    kernel_params_, vs_, opt_res
 end
 
 
