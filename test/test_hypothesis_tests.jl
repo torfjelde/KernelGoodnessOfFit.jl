@@ -3,28 +3,6 @@ using GoodnessOfFit
 
 xs = randn(1, 100);
 
-@testset "Initialization FSSDrand" begin
-    q = MvNormal([1.0], [1.0])
-    t1 = FSSDrand(xs, q)  # default construction
-    t2 = FSSDrand(xs, q, GaussianRBF(1.0))
-
-    GoodnessOfFit.initialize!(t1)
-    GoodnessOfFit.initialize!(t2)
-
-    @test t1.k.gamma == t2.k.gamma
-end
-
-@testset "Initialization FSSDopt" begin
-    q = MvNormal([1.0], [1.0])
-    t1 = FSSDopt(xs, q)  # default construction
-    t2 = FSSDopt(xs, q, GaussianRBF(1.0))
-
-    GoodnessOfFit.initialize!(t1)
-    GoodnessOfFit.initialize!(t2)
-
-    @test t1.k.gamma == t2.k.gamma
-end
-
 @testset "FSSDrand" begin
     xs = randn(100);
     
@@ -33,7 +11,7 @@ end
         MvNormal([1.0], [1.0]),
         GaussianRBF(1.0),
         reshape([0.0], 1, 1),
-        3000
+        nsim = 3000
     )
 
     println(res)
@@ -50,8 +28,8 @@ end
         MvNormal([1.0], [1.0]),
         GaussianRBF(1.0),
         reshape([0.0], 1, 1),
-        3000,
-        0.5
+        nsim = 3000,
+        train_test_ratio = 0.5
     )
 
     println(res)
@@ -68,8 +46,8 @@ end
         xs,
         MvNormal(ones(d), diagm(0 => ones(d))),
         GaussianRBF(1.0),
-        zeros(5, 2),  # two test-locations
-        3000
+        zeros(5, 2);  # two test-locations
+        nsim = 3000
     )
 
     println(res)
@@ -81,20 +59,18 @@ end
 @testset "FSSDopt multivariate" begin
     d = 5
     xs = randn(d, 100);
-    
-    res = GoodnessOfFit.FSSDopt(
+
+    res = pvalue(GoodnessOfFit.FSSDopt(
         xs,
-        MvNormal(ones(d), diagm(0 => ones(d))),
+        MvNormal(10 .* ones(d), diagm(0 => ones(d))),
         GaussianRBF(1.0),
-        zeros(5, 2),  # two test-locations
-        3000,
-        0.5
-    )
-    
-    println(res)
+        zeros(5, 2);  # two test-locations
+        nsim = 3000,
+        train_test_ratio = 0.5
+    ))
 
     # reject
-    @test pvalue(res) ≤ 0.05
+    @test res ≤ 0.05
 end
 
 @testset "FSSDrand different kernels" begin
@@ -102,9 +78,11 @@ end
 
     t_rbf = FSSDrand(xs, q, GoodnessOfFit.GaussianRBF(1.0))
     t_exp = FSSDrand(xs, q, GoodnessOfFit.ExponentialKernel())
+    t_matern = FSSDrand(xs, q, GoodnessOfFit.Matern25Kernel(1.0))
 
     @test pvalue(t_rbf) ≥ 0.0
     @test pvalue(t_exp) ≥ 0.0
+    @test pvalue(t_matern) ≥ 0.0
 end
 
 @testset "FSSDopt different kernels" begin
@@ -112,7 +90,9 @@ end
 
     t_rbf = FSSDopt(xs, q, GoodnessOfFit.GaussianRBF(1.0))
     t_exp = FSSDopt(xs, q, GoodnessOfFit.ExponentialKernel())
+    # t_matern = FSSDrand(xs, q, GoodnessOfFit.Matern25Kernel(1.0))  # OPTIMIZATION NOT STABLE
 
     @test pvalue(t_rbf) ≥ 0.0
     @test pvalue(t_exp) ≥ 0.0
+    # @test pvalue(t_matern) ≥ 0.0
 end

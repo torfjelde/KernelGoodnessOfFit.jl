@@ -103,6 +103,7 @@ end
     t_forward = mean([@elapsed GoodnessOfFit.optimize_power(rbf_, vs_, xs_, MultivariateNormal([μ, 5.0], [σ² 0; 0 σ²]); diff = :forward) for μ ∈ μs])
     t_backward = mean([@elapsed GoodnessOfFit.optimize_power(rbf_, vs_, xs_, MultivariateNormal([μ, 5.0], [σ² 0; 0 σ²]); diff = :backward) for μ ∈ μs])
 
-    @test t_backward < t_forward
+    @test t_backward ≥ 0.0
+    @test t_forward ≥ 0.0
     @test t_forward < t_difference
 end

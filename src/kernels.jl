@@ -5,6 +5,7 @@ import SpecialFunctions: gamma, besselk
 abstract type Kernel end
 
 function kernel(k::Kernel, x::AbstractVector, y::AbstractVector) end
+kernel(k::Kernel, x::Number, y::Number) = kernel(k, [x], [y])
 
 function get_params(k::Kernel) end
 function set_params!(k::Kernel, params) end
@@ -115,12 +116,18 @@ macro make_derivatives(kernel, autodiff::Symbol = :forward)
              @inline k_dx(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, z, y), x);
              @inline k_dy(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, x, z), y);
              @inline k_dxdy(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.jacobian(z -> k_dx(k, x, z), y);
+
+             @inline k_dx(k::$kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> kernel(k, z, y), x);
+             @inline k_dy(k::$kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> kernel(k, x, z), y);
+             @inline k_dxdy(k::$kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> k_dx(k, x, z), y);
              end)
     elseif autodiff == :backward
         eval(quote
              @inline k_dx(k::$kernel, x::AbstractArray, y::AbstractArray) = ReverseDiff.gradient(z -> kernel(k, z, y), x);
              @inline k_dy(k::$kernel, x::AbstractArray, y::AbstractArray) = ReverseDiff.gradient(z -> kernel(k, x, z), y);
              @inline k_dxdy(k::$kernel, x::AbstractArray, y::AbstractArray) = ReverseDiff.jacobian(z -> k_dx(k, x, z), y);
+
+             # TODO: `ReverseDiff` does not support taking derivatives, as reverse-mode differentiation used useful for N -> 1 case not 1 -> 1 case
              end)
     else
         throw(ValueError("unsupported autodiff method $autodiff"))

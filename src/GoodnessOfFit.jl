@@ -26,7 +26,8 @@ export
     FSSDrand,
 
     # core
-    perform
+    perform,
+    pvalue
 
 include("core.jl")
 include("bootstrap.jl")

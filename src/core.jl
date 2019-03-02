@@ -17,4 +17,7 @@ Performs the specified goodness-of-fit test.
 """
 function perform(::GoodnessOfFitTest, q, xs) end
 
+# HypothesisTests.jl interface
+function pvalue(::GoodnessOfFitTest) end
+
 abstract type GoodnessOfFitResult end

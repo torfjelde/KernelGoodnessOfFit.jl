@@ -47,115 +47,116 @@ set_locs!(t::FSSD, V::AbstractArray) = begin
 end
 
 # test stuff
-population_param_of_interest(t::T where T <: FSSD) = ("Finite-Set Stein Discrepancy (FSSD)", 0, "?")
+population_param_of_interest(t::T where T <: FSSD) = ("Finite-Set Stein Discrepancy (FSSD)", 0, t.stat)
 default_tail(t::T where T <: FSSD) = :tail
 show_params(io::IO, t::FSSD, ident) = begin
     println(io, ident, "kernel:           ", t.k)
     println(io, ident, "test locations:   ", t.V)
     println(io, ident, "num. simulate H₀: ", t.num_simulate)
-    println(io, ident, "q:                ", t.q)
 end
 
 ###############
 ### FSSDopt ###
 ###############
-mutable struct FSSDopt{T} <: FSSD where T <: Kernel
-    x::AbstractArray # data
-    q                # a "distribution"; only requires `gradlogpdf(d, x)` to be defined
-    k::T
-    V::AbstractArray # have some default value
-    num_simulate::Int
-    train_test_ratio::Float64
+mutable struct FSSDopt{K} <: FSSD where {K <: Kernel}
+    stat::Float64             # FSSD estimate
+    p_val::Float64            # p-value
+    k::K                      # kernel
+    V::AbstractArray          # test locations
+    num_simulate::Int         # number of simulations used to approximation null-dist
+    train_test_ratio::Float64 # ratio to use as TRAINING data
 end
 
-FSSDopt(x::AbstractArray, q, k::Kernel, V::AbstractArray; num_simulate = 3000, train_test_ratio = 0.5) = FSSDopt(x, q, k, V, num_simulate, train_test_ratio)
-FSSDopt(x::AbstractArray, q, k::Kernel; J::Int = 5, num_simulate = 3000, train_test_ratio = 0.5) = begin
-    d = size(x, 1)
-    V = zeros(d, J)
-    FSSDopt(x, q, k, V, num_simulate, train_test_ratio)
+"""
+    
+"""
+FSSDopt(x::AbstractArray, q, k::Kernel, V::AbstractArray; nsim = 3000, train_test_ratio = 0.5) = begin
+    n = size(x, 2)
+    d, J = size(V)
+
+    split_idx = Integer(floor(n * train_test_ratio))
+    train = @view x[:, 1:split_idx]
+    test = @view x[:, split_idx + 1:end]
+
+    # update kernel parameters inplace
+    kernel_params, V, opt_res = optimize_power(k, V, train, q)
+
+    # update kernel
+    if !isempty(kernel_params)
+        set_params!(k, kernel_params...)
+    end
+
+    res = perform(k, V, test, q; num_simulate = nsim)
+    FSSDopt(res.stat, res.p_val, k, V, nsim, train_test_ratio)
 end
-FSSDopt(x::AbstractArray, q; J::Int = 5, num_simulate = 3000, train_test_ratio = 0.5) = begin
-    FSSDopt(x, q, GaussianRBF(1.0); J = J, num_simulate = num_simulate, train_test_ratio = train_test_ratio)
+
+FSSDopt(x::AbstractArray, q, k::Kernel; J::Int = 5, kwargs...) = begin
+    # initialization
+    p = fit_mle(MvNormal, x)
+    V = rand(p, J)
+    FSSDopt(x, q, k, V; kwargs...)
+end
+
+FSSDopt(x::AbstractArray, q; J::Int = 5, kwargs...) = begin
+    # initialization
+    p = fit_mle(MvNormal, x)
+    V = rand(p, J)
+
+    # default to `GaussianRBF` kernel with variance similar to MLE fit
+    k = GaussianRBF(maximum(cov(p)))
+
+    FSSDopt(x, q, k, V; kwargs...)
 end
 
 testname(::FSSDopt) = "Finite-Set Stein Discrepancy optimized (FSSD-opt)"
+pvalue(t::FSSDopt) = t.p_val
 
 ################
 ### FSSDrand ###
 ################
-mutable struct FSSDrand{T} <: FSSD where T  <: Kernel
-    x::AbstractArray
-    q
-    k::T
-    V::AbstractArray # have some default value
-    num_simulate::Int
+mutable struct FSSDrand{K} <: FSSD where {K <: Kernel}
+    stat::Float64     # FSSD estimate
+    p_val::Float64    # p-value
+    k::K              # kernel
+    V::AbstractArray  # test locations
+    num_simulate::Int # number of simulations used to approximation null-dist
 end
 
-FSSDrand(x::AbstractArray, q, k::Kernel, V::AbstractArray; num_simulate = 3000) = FSSDrand(x, q, k, V, num_simulate)
-FSSDrand(x::AbstractArray, q, k::Kernel; J::Int = 5, num_simulate = 3000) = begin
-    d = size(x, 1)
-    V = zeros(d, J)
-    FSSDrand(x, q, k, V, num_simulate)
+# FSSDrand(x::AbstractArray, q, k::Kernel, V::AbstractArray; num_simulate = 3000) = FSSDrand(x, q, k, V, num_simulate)
+# FSSDrand(x::AbstractArray, q, k::Kernel; J::Int = 5, num_simulate = 3000) = begin
+#     d = size(x, 1)
+#     V = zeros(d, J)
+#     FSSDrand(x, q, k, V, num_simulate)
+# end
+# FSSDrand(x::AbstractArray, q; J::Int = 5, num_simulate = 3000) = begin
+#     FSSDrand(x, q, GaussianRBF(1.0); J = J, num_simulate = num_simulate)
+# end
+
+FSSDrand(x::AbstractArray, q, k::Kernel, V::AbstractArray; nsim = 3000) = begin
+    res = perform(k, V, x, q; num_simulate = nsim)
+    FSSDrand(res.stat, res.p_val, k, V, nsim)
 end
-FSSDrand(x::AbstractArray, q; J::Int = 5, num_simulate = 3000) = begin
-    FSSDrand(x, q, GaussianRBF(1.0); J = J, num_simulate = num_simulate)
+
+FSSDrand(x::AbstractArray, q, k::Kernel; J::Int = 5, kwargs...) = begin
+    # initialization
+    p = fit_mle(MvNormal, x)
+    V = rand(p, size(x, 2))
+    FSSDrand(x, q, k, V; kwargs...)
+end
+
+FSSDrand(x::AbstractArray, q; J = 5, kwargs...) = begin
+    # initialization
+    p = fit_mle(MvNormal, x)
+    V = rand(p, J)
+    k = GaussianRBF(maximum(cov(p)))
+
+    return FSSDrand(x, q, k, V; kwargs...)
 end
 
 
 testname(::FSSDrand) = "Finite-Set Stein Discrepancy randomized (FSSD-rand)"
+pvalue(t::FSSDrand) = t.p_val
 
-# initialization of parameters
-initialize!(t::FSSD) = begin
-    # initialize test locations
-    p = fit_mle(MvNormal, t.x)
-    t.V = rand(p, size(t.V, 2))
-end
-
-initialize!(t::FSSDrand{GaussianRBF}) = begin
-    # initialize test locations
-    p = fit_mle(MvNormal, t.x)
-    t.V = rand(p, size(t.V, 2))
-
-    # set Gaussian kernel bandwith to maximum variance
-    t.k = GaussianRBF(maximum(cov(p)))
-end
-
-pvalue(t::FSSDrand) = begin
-    initialize!(t)
-    
-    # perform test
-    res = perform(t)
-    res.p_val
-end
-
-pvalue(t::FSSDopt) = begin
-    initialize!(t)
-
-    # optimize params
-    optimize_power!(t)
-
-    # perform test
-    res = perform(t)
-
-    res.p_val
-end
-
-optimize_power!(t::FSSDopt{T} where T <: Kernel) = begin
-    n = size(t.x, 2)
-    d, J = size(t.V)
-
-    split_idx = Integer(floor(n * t.train_test_ratio))
-    train = @view t.x[:, 1:split_idx]
-
-    # update kernel parameters inplace
-    kernel_params, V, opt_res = optimize_power(t.k, t.V, train, t.q)
-
-    # update kernel
-    set_params!(t.k, kernel_params...)
-
-    # update test locations
-    set_locs!(t, V)
-end
 
 # Objective is to maximize FSSD^2 / σ₁ where
 
@@ -166,10 +167,6 @@ end
 
 # Compute ∇ of 
 function ξ(k, p, x, v)
-    # CHECKED
-    
-    # TODO: maybe switch to computing the Jacobian
-    # logp_dx = ForwardDiff.gradient(z -> logpdf(p, z), x)
     logp_dx = gradlogpdf(p, x)
     kdx = GoodnessOfFit.k_dx(k, x, v)
 
@@ -247,6 +244,15 @@ function compute_Ξ(k, p, xs, vs)
     [hcat([ξ(k, p, xs[:, i], vs[:, m]) / sqrt(d * J) for i = 1:n]...) for m = 1:J]
 end
 
+function compute_Ξ(k, p::D where D <: Distribution{Univariate, Continuous}, xs, vs)
+    # TODO: change to use `size(vs, 2)` and so on
+    J = size(vs)[2]  # number of test points
+    n = size(xs)[2]  # number of samples
+    d = size(xs)[1]  # dimension of the inputs
+
+    [hcat([ξ(k, p, xs[1, i], vs[1, m]) / sqrt(d * J) for i = 1:n]...) for m = 1:J]
+end
+
 
 function τ_from_Ξ(Ξ)
     vcat(Ξ...)
@@ -308,7 +314,7 @@ unpack(k::ExponentialKernel, ζ::AbstractVector, d::Integer, J::Integer) = (), r
 pack(k::Matern25Kernel, vs::AbstractArray) = vcat(log(k.ρ), vs...)
 unpack(k::Matern25Kernel, ζ::AbstractArray, d::Integer, J::Integer) = exp.(ζ[1:1]), reshape(ζ[2:end], d, J)
 
-function optimize_power(k::K, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :backward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, β_H₁ = 0.0, ε = 0.01) where K <: Kernel
+function optimize_power(k::K, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :forward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, β_H₁ = 0.0, ε = 0.01) where K <: Kernel
     d, J = size(vs)
 
     # define objective (don't call unwrap_ζ for that perf yo)
