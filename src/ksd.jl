@@ -3,13 +3,13 @@ using Distributed, SharedArrays, LinearAlgebra
 using ForwardDiff
 using Distributions
 
-struct KSDTest <: GoodnessOfFitTest
+struct KSDTest <: KernelGoodnessOfFitTest
     kernel::Kernel
     m::Integer
     α::Float64
 end
 
-struct KSDResult <: GoodnessOfFitResult
+struct KSDResult <: KernelGoodnessOfFitResult
     stat::Float64
 
     "p-value of test"

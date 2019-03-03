@@ -1,12 +1,12 @@
 using Test, Distributions, HypothesisTests, LinearAlgebra
-using GoodnessOfFit
+using KernelGoodnessOfFit
 
 xs = randn(1, 100);
 
 @testset "FSSDrand" begin
     xs = randn(100);
     
-    res = GoodnessOfFit.FSSDrand(
+    res = KernelGoodnessOfFit.FSSDrand(
         reshape(xs, 1, :),
         MvNormal([1.0], [1.0]),
         GaussianRBF(1.0),
@@ -23,7 +23,7 @@ end
 @testset "FSSDopt" begin
     xs = randn(100);
     
-    res = GoodnessOfFit.FSSDopt(
+    res = KernelGoodnessOfFit.FSSDopt(
         reshape(xs, 1, :),
         MvNormal([1.0], [1.0]),
         GaussianRBF(1.0),
@@ -42,7 +42,7 @@ end
     d = 5
     xs = randn(d, 100);
     
-    res = GoodnessOfFit.FSSDrand(
+    res = KernelGoodnessOfFit.FSSDrand(
         xs,
         MvNormal(ones(d), diagm(0 => ones(d))),
         GaussianRBF(1.0),
@@ -60,7 +60,7 @@ end
     d = 5
     xs = randn(d, 100);
 
-    res = pvalue(GoodnessOfFit.FSSDopt(
+    res = pvalue(KernelGoodnessOfFit.FSSDopt(
         xs,
         MvNormal(10 .* ones(d), diagm(0 => ones(d))),
         GaussianRBF(1.0),
@@ -76,9 +76,9 @@ end
 @testset "FSSDrand different kernels" begin
     q = MvNormal([10.0], [1.0])
 
-    t_rbf = FSSDrand(xs, q, GoodnessOfFit.GaussianRBF(1.0))
-    t_exp = FSSDrand(xs, q, GoodnessOfFit.ExponentialKernel())
-    t_matern = FSSDrand(xs, q, GoodnessOfFit.Matern25Kernel(1.0))
+    t_rbf = FSSDrand(xs, q, KernelGoodnessOfFit.GaussianRBF(1.0))
+    t_exp = FSSDrand(xs, q, KernelGoodnessOfFit.ExponentialKernel())
+    t_matern = FSSDrand(xs, q, KernelGoodnessOfFit.Matern25Kernel(1.0))
 
     @test pvalue(t_rbf) ≥ 0.0
     @test pvalue(t_exp) ≥ 0.0
@@ -88,9 +88,9 @@ end
 @testset "FSSDopt different kernels" begin
     q = MvNormal([10.0], [1.0])
 
-    t_rbf = FSSDopt(xs, q, GoodnessOfFit.GaussianRBF(1.0))
-    t_exp = FSSDopt(xs, q, GoodnessOfFit.ExponentialKernel())
-    # t_matern = FSSDrand(xs, q, GoodnessOfFit.Matern25Kernel(1.0))  # OPTIMIZATION NOT STABLE
+    t_rbf = FSSDopt(xs, q, KernelGoodnessOfFit.GaussianRBF(1.0))
+    t_exp = FSSDopt(xs, q, KernelGoodnessOfFit.ExponentialKernel())
+    # t_matern = FSSDrand(xs, q, KernelGoodnessOfFit.Matern25Kernel(1.0))  # OPTIMIZATION NOT STABLE
 
     @test pvalue(t_rbf) ≥ 0.0
     @test pvalue(t_exp) ≥ 0.0

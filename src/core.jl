@@ -4,7 +4,7 @@ import HypothesisTests: HypothesisTest, pvalue
 """
 Goodness of Fit Test.
 """
-abstract type GoodnessOfFitTest <: HypothesisTest end
+abstract type KernelGoodnessOfFitTest <: HypothesisTest end
 
 # implement this for whatever gof-test
 """
@@ -15,9 +15,9 @@ Performs the specified goodness-of-fit test.
 - `q`: model which needs to have an implementation for `gradlogpdf`.
 - `x::AbstractArray`: samples to test against.
 """
-function perform(::GoodnessOfFitTest, q, xs) end
+function perform(::KernelGoodnessOfFitTest, q, xs) end
 
 # HypothesisTests.jl interface
-function pvalue(::GoodnessOfFitTest) end
+function pvalue(::KernelGoodnessOfFitTest) end
 
-abstract type GoodnessOfFitResult end
+abstract type KernelGoodnessOfFitResult end

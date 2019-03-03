@@ -8,7 +8,7 @@ using Optim
 import HypothesisTests: pvalue, testname, show_params, default_tail, population_param_of_interest
 
 
-struct FSSDTest <: GoodnessOfFitTest
+struct FSSDTest <: KernelGoodnessOfFitTest
     kernel::Kernel
 
     # test locations
@@ -31,7 +31,7 @@ FSSDTest(kernel::Kernel, V::AbstractArray; α = 0.01, num_simulate = 3000) = beg
 end
 
 
-struct FSSDResult <: GoodnessOfFitResult
+struct FSSDResult <: KernelGoodnessOfFitResult
     stat::Float64
     
     p_val # p-value of the test
@@ -41,7 +41,7 @@ struct FSSDResult <: GoodnessOfFitResult
     V  # test locations
 end
 
-abstract type FSSD <: GoodnessOfFitTest end
+abstract type FSSD <: KernelGoodnessOfFitTest end
 set_locs!(t::FSSD, V::AbstractArray) = begin
     t.V = V
 end
@@ -65,12 +65,13 @@ mutable struct FSSDopt{K} <: FSSD where {K <: Kernel}
     V::AbstractArray          # test locations
     num_simulate::Int         # number of simulations used to approximation null-dist
     train_test_ratio::Float64 # ratio to use as TRAINING data
+    # bounds::AbstractArray     # bounds for the the variables to optimize over (e.g. test locations V, kernel params)
 end
 
 """
     
 """
-FSSDopt(x::AbstractArray, q, k::Kernel, V::AbstractArray; nsim = 3000, train_test_ratio = 0.5) = begin
+FSSDopt(x::AbstractArray, q, k::Kernel, V::AbstractArray; nsim = 3000, train_test_ratio = 0.5, kwargs...) = begin
     n = size(x, 2)
     d, J = size(V)
 
@@ -79,7 +80,7 @@ FSSDopt(x::AbstractArray, q, k::Kernel, V::AbstractArray; nsim = 3000, train_tes
     test = @view x[:, split_idx + 1:end]
 
     # update kernel parameters inplace
-    kernel_params, V, opt_res = optimize_power(k, V, train, q)
+    kernel_params, V, opt_res = optimize_power(k, V, train, q; kwargs...)
 
     # update kernel
     if !isempty(kernel_params)
@@ -168,7 +169,7 @@ pvalue(t::FSSDrand) = t.p_val
 # Compute ∇ of 
 function ξ(k, p, x, v)
     logp_dx = gradlogpdf(p, x)
-    kdx = GoodnessOfFit.k_dx(k, x, v)
+    kdx = KernelGoodnessOfFit.k_dx(k, x, v)
 
     return logp_dx * kernel(k, x, v) + kdx
 end
@@ -280,7 +281,7 @@ end
     (4 * transpose(μ) * Σ * μ)[1]
 end
 
-function fssd_H₁_opt_factor(k, p, xs, vs; ε = 0.01, β_H₁ = 0.0)
+function fssd_H₁_opt_factor(k, p, xs, vs; ε = 0.01, β_H₁ = 0.01)
     Ξ = compute_Ξ(k, p, xs, vs)
     s = fssd(Ξ)
     τ = τ_from_Ξ(Ξ)
@@ -290,7 +291,7 @@ function fssd_H₁_opt_factor(k, p, xs, vs; ε = 0.01, β_H₁ = 0.0)
     # asymptotic under H₁ depends O(√n) on (FSSD² / σ₁² + ε)
     # subtract regularization term because we're going to multiply by minus
     # also, we want to stop it from being too SMALL, so regularize inverse of it
-    return (s ./ (σ₁ + ε)) .- (β_H₁ / σ₁)
+    return (s ./ (σ₁ + ε)) .- β_H₁ * (σ₁ + (σ₁ + 1e-6)^(-1))
 end
 
 ### Gaussian kernel optimization
@@ -300,7 +301,7 @@ end
 
 function unpack(k::GaussianRBF, ζ::AbstractVector, d::Integer, J::Integer)
     # σₖ, V
-    return (exp(ζ[end]), ), reshape(ζ[1:end - 1], d, J)
+    return (exp(ζ[1]), ), reshape(ζ[2:end], d, J)
 end
 
 
@@ -314,11 +315,11 @@ unpack(k::ExponentialKernel, ζ::AbstractVector, d::Integer, J::Integer) = (), r
 pack(k::Matern25Kernel, vs::AbstractArray) = vcat(log(k.ρ), vs...)
 unpack(k::Matern25Kernel, ζ::AbstractArray, d::Integer, J::Integer) = exp.(ζ[1:1]), reshape(ζ[2:end], d, J)
 
-function optimize_power(k::K, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :forward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, β_H₁ = 0.0, ε = 0.01) where K <: Kernel
+function optimize_power(k::K, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :forward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, β_H₁ = 0.0, ε = 0.01, lower::AbstractArray = [], upper::AbstractArray = []) where K <: Kernel
     d, J = size(vs)
 
     # define objective (don't call unwrap_ζ for that perf yo)
-    f(ζ) = begin
+    function f(ζ)
         kernel_params, V = unpack(k, ζ, d, J)
         ker = isempty(kernel_params) ? K() : K(kernel_params...)
 
@@ -333,7 +334,8 @@ function optimize_power(k::K, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol =
 
     # define gradient
     if diff == :forward
-        ∇f! = (F, ζ) -> ForwardDiff.gradient!(F, f, ζ)
+        # ∇f! = (F, ζ) -> ForwardDiff.gradient!(F, f, ζ)
+        ∇f! = nothing
     elseif diff == :backward
         ∇f! = (F, ζ) -> ReverseDiff.gradient!(F, f, ζ)
     elseif diff == :difference
@@ -347,8 +349,20 @@ function optimize_power(k::K, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol =
 
     if method == :lbfgs
         # optimize
-        if diff != :difference
-            opt_res = optimize(f, ∇f!, ζ₀, LBFGS())
+        if diff == :forward
+            if (length(lower) > 0) && (length(upper) > 0)
+                @info "optimizing using bounds"
+                opt_res = optimize(f, lower, upper, clamp.(ζ₀, lower, upper), Fminbox(LBFGS()), autodiff = diff)
+            else 
+                opt_res = optimize(f, ζ₀, LBFGS(), autodiff = diff)
+            end
+        elseif diff == :backward
+            if (length(lower) > 0) && (length(upper) > 0)
+                @info "optimizing using bounds"
+                opt_res = optimize(f, ∇f!, lower, upper, clamp.(ζ₀, lower, upper), Fminbox(LBFGS()), autodiff = diff)
+            else 
+                opt_res = optimize(f, ∇f!, ζ₀, LBFGS(), autodiff = diff)
+            end
         else
             opt_res = optimize(f, ζ₀, LBFGS())
         end

@@ -1,4 +1,4 @@
-module GoodnessOfFit
+module KernelGoodnessOfFit
 
 # exports
 export

@@ -1,5 +1,5 @@
 using Distributions, ForwardDiff
-using GoodnessOfFit
+using KernelGoodnessOfFit
 
 # setup the problem
 rbf_ = GaussianRBF(1.0)
@@ -16,7 +16,7 @@ n_ = 100
 xs_ = rand(p_, n_)
 
 # simple example
-T = GoodnessOfFit.KSDTest(rbf_, 10, 0.05)
+T = KernelGoodnessOfFit.KSDTest(rbf_, 10, 0.05)
 
 @test perform(T, q_, xs_).result == :reject
 @test perform(T, p_, xs_).result == :accept

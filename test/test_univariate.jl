@@ -1,6 +1,6 @@
 using Distributions
 using Test
-using GoodnessOfFit
+using KernelGoodnessOfFit
 
 @testset "Univeriate Normal" begin
     xs = randn(1, 100);
