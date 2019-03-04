@@ -97,13 +97,19 @@ set_params!(k::Matern25Kernel, ρ) = begin
     k.ρ = ρ
 end
 
-struct InverseMultiQuadratic
+### InverseMultiQuadratic (IMQ) kernel
+mutable struct InverseMultiQuadratic <: Kernel
     c  # > 0
     b  # < 0
 end
 
-function kernel(k::InverseMulitQuadratic, x::AbstractVector, y::AbstractVector)
-    (c^2 + norm(x - y)^2)^b
+function kernel(k::InverseMultiQuadratic, x::AbstractVector, y::AbstractVector)
+    (k.c^2 + norm(x - y)^2)^k.b
+end
+get_params(k::InverseMultiQuadratic) = [k.c, k.b]
+set_params!(k::InverseMultiQuadratic, c, b) = begin
+    k.c = c
+    k.b = b
 end
 
 ### Derivatives

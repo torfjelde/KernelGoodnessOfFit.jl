@@ -294,47 +294,62 @@ function fssd_H₁_opt_factor(k, p, xs, vs; ε = 0.01, β_H₁ = 0.01)
     return (s ./ (σ₁ + ε)) .- β_H₁ * (σ₁ + (σ₁ + 1e-6)^(-1))
 end
 
-### Gaussian kernel optimization
-function pack(k::GaussianRBF, vs::AbstractArray)
-    vcat(log(k.gamma), vs...)
-end
-
-function unpack(k::GaussianRBF, ζ::AbstractVector, d::Integer, J::Integer)
-    # σₖ, V
-    return (exp(ζ[1]), ), reshape(ζ[2:end], d, J)
-end
+### Gaussian kernel optimization: {σₖ, V}
+pack(k::GaussianRBF, vs::AbstractArray) = vcat(log(k.gamma), vs...)
+unpack(k::GaussianRBF, θ::AbstractVector, d::Integer, J::Integer) = (exp(θ[1]), ), reshape(θ[2:end], d, J)
 
 
 ### Exponential kernel pack / unpack
 pack(k::ExponentialKernel, vs::AbstractArray) = vcat(vs...)
-unpack(k::ExponentialKernel, ζ::AbstractVector, d::Integer, J::Integer) = (), reshape(ζ, d, J)
+unpack(k::ExponentialKernel, θ::AbstractVector, d::Integer, J::Integer) = (), reshape(θ, d, J)
 
 # ### Matern Kernel: do the log-exp transform to enforce positive
 # pack(k::MaternKernel, vs::AbstractArray) = vcat(log(k.ν), log(k.ρ), vs...)
-# unpack(k::MaternKernel, ζ::AbstractArray, d::Integer, J::Integer) = exp.(ζ[1:2]), reshape(ζ[3:end], d, J)
+# unpack(k::MaternKernel, θ::AbstractArray, d::Integer, J::Integer) = exp.(θ[1:2]), reshape(θ[3:end], d, J)
 pack(k::Matern25Kernel, vs::AbstractArray) = vcat(log(k.ρ), vs...)
-unpack(k::Matern25Kernel, ζ::AbstractArray, d::Integer, J::Integer) = exp.(ζ[1:1]), reshape(ζ[2:end], d, J)
+unpack(k::Matern25Kernel, θ::AbstractArray, d::Integer, J::Integer) = exp.(θ[1:1]), reshape(θ[2:end], d, J)
 
-function optimize_power(k::K, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :forward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, β_H₁ = 0.0, ε = 0.01, lower::AbstractArray = [], upper::AbstractArray = []) where K <: Kernel
+### InverseMultiQuadratic (IMQ): c > 0, b < 0
+pack(k::InverseMultiQuadratic, vs::AbstractArray) = vcat(log(k.c), log(- k.b), vs...)
+unpack(k::InverseMultiQuadratic, θ::AbstractArray, d::Integer, J::Integer) = (exp(θ[1]), - exp(θ[2])), reshape(θ[3:end], d, J)
+
+# defaults
+pack(vs::AbstractArray) = vcat(vs...)
+unpack(θ::AbstractVector, d::Integer, J::Integer) = reshape(θ, d, J)
+
+function optimize_power(k::K, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :forward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, β_H₁ = 0.0, ε = 0.01, lower::AbstractArray = [], upper::AbstractArray = [], test_locations_only = false) where K <: Kernel
     d, J = size(vs)
 
-    # define objective (don't call unwrap_ζ for that perf yo)
-    function f(ζ)
-        kernel_params, V = unpack(k, ζ, d, J)
-        ker = isempty(kernel_params) ? K() : K(kernel_params...)
+    # pack and combine
+    if test_locations_only
+        θ₀ = pack(vs)
+    else
+        θ₀ = pack(k, vs)
+    end
 
-        # add regularization to the parameter
-        # TODO: currently using matrix norm for `V` => should we use a vector for β_V and use vector nor?
-        if β_σ > 0.0 || β_V > 0.0
-            - fssd_H₁_opt_factor(ker, p, xs, V; ε = ε, β_H₁ = β_H₁) + β_σ ./ (σ^2 + 1e-6) + β_V * norm(V)
+    # define objective (don't call unwrap_θ for that perf yo)
+    function f(θ)
+        if test_locations_only
+            V = unpack(θ, d, J)
+            return - fssd_H₁_opt_factor(k, p, xs, V; ε = ε, β_H₁ = β_H₁)
         else
-            - fssd_H₁_opt_factor(ker, p, xs, V; ε = ε, β_H₁ = β_H₁)
+            kernel_params, V = unpack(k, θ, d, J)
+            ker = isempty(kernel_params) ? K() : K(kernel_params...)
+
+            # add regularization to the parameter
+            # TODO: currently using matrix norm for `V` => should we use a vector for β_V and use vector nor?
+            if β_σ > 0.0 || β_V > 0.0
+                # TODO: remove this; don't wnat to only be able to use one kernel
+                return - fssd_H₁_opt_factor(ker, p, xs, V; ε = ε, β_H₁ = β_H₁) + β_σ ./ (σ^2 + 1e-6) + β_V * norm(V)
+            else
+                return - fssd_H₁_opt_factor(ker, p, xs, V; ε = ε, β_H₁ = β_H₁)
+            end
         end
     end
 
     # define gradient
     if diff == :forward
-        # ∇f! = (F, ζ) -> ForwardDiff.gradient!(F, f, ζ)
+        # ∇f! = (F, θ) -> ForwardDiff.gradient!(F, f, θ)
         ∇f! = nothing
     elseif diff == :backward
         ∇f! = (F, ζ) -> ReverseDiff.gradient!(F, f, ζ)
@@ -344,50 +359,39 @@ function optimize_power(k::K, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol =
         throw(ArgumentError("diff = $diff not not supported"))
     end
 
-    # pad and combine
-    ζ₀ = pack(k, vs)
-
-    if method == :lbfgs
-        # optimize
-        if diff == :forward
-            if (length(lower) > 0) && (length(upper) > 0)
-                @info "optimizing using bounds"
-                opt_res = optimize(f, lower, upper, clamp.(ζ₀, lower, upper), Fminbox(LBFGS()), autodiff = diff)
-            else 
-                opt_res = optimize(f, ζ₀, LBFGS(), autodiff = diff)
-            end
-        elseif diff == :backward
-            if (length(lower) > 0) && (length(upper) > 0)
-                @info "optimizing using bounds"
-                opt_res = optimize(f, ∇f!, lower, upper, clamp.(ζ₀, lower, upper), Fminbox(LBFGS()), autodiff = diff)
-            else 
-                opt_res = optimize(f, ∇f!, ζ₀, LBFGS(), autodiff = diff)
-            end
-        else
-            opt_res = optimize(f, ζ₀, LBFGS())
+    # optimize
+    if diff == :forward
+        if (length(lower) > 0) && (length(upper) > 0)
+            @info "optimizing using bounds"
+            opt_res = optimize(f, lower, upper, clamp.(θ₀, lower, upper), Fminbox(LBFGS()), autodiff = diff)
+        else 
+            opt_res = optimize(f, θ₀, LBFGS(), autodiff = diff)
         end
-
-        ζ = opt_res.minimizer
-        kernel_params_, vs_ = unpack(k, ζ, d, J)
-        
-    elseif method == :sgd
-        ζ = ζ₀
-
-        # setup container for gradient
-        F = zeros(size(ζ))
-
-        # step
-        opt_res = @elapsed for i = 1:num_steps
-            # update
-            ζ = ζ - step_size * ∇f!(F, ζ)
+    elseif diff == :backward
+        if (length(lower) > 0) && (length(upper) > 0)
+            @info "optimizing using bounds"
+            opt_res = optimize(f, ∇f!, lower, upper, clamp.(θ₀, lower, upper), Fminbox(LBFGS()))
+        else 
+            opt_res = optimize(f, ∇f!, θ₀, LBFGS())
         end
-
-        kernel_params_, vs_ = unpack(k, ζ, d, J)
     else
-        error("$method not recogized as a supported method")
+        if (length(lower) > 0) && (length(upper) > 0)
+            @info "optimizing using bounds"
+            opt_res = optimize(f, lower, upper, clamp.(θ₀, lower, upper), Fminbox(LBFGS()))
+        else
+            opt_res = optimize(f, θ₀, LBFGS())
+        end
     end
 
-    kernel_params_, vs_, opt_res
+    θ = opt_res.minimizer
+
+    if test_locations_only
+        vs_ = unpack(θ, d, J)
+        return (), vs_, opt_res
+    else
+        kernel_params_, vs_ = unpack(k, θ, d, J)
+        return kernel_params_, vs_, opt_res
+    end
 end
 
 
