@@ -97,6 +97,15 @@ set_params!(k::Matern25Kernel, ρ) = begin
     k.ρ = ρ
 end
 
+struct InverseMultiQuadratic
+    c  # > 0
+    b  # < 0
+end
+
+function kernel(k::InverseMulitQuadratic, x::AbstractVector, y::AbstractVector)
+    (c^2 + norm(x - y)^2)^b
+end
+
 ### Derivatives
 
 # define the necessary derivatives of kernel
@@ -139,3 +148,4 @@ end
 @make_derivatives ExponentialKernel
 # @make_derivatives MaternKernel
 @make_derivatives Matern25Kernel
+@make_derivatives InverseMultiQuadratic
