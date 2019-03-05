@@ -108,5 +108,6 @@ Details:
 ```
 
 # References
-- [1] Liu, Q., Lee, J. D., & Jordan, M. I., A kernelized stein discrepancy for goodness-of-fit tests and model evaluation, CoRR, (),  (2016). 
-- [2] Jitkrittum, W., Xu, W., Szabo, Z., Fukumizu, K., & Gretton, A., A Linear-Time Kernel Goodness-Of-Fit Test, CoRR, (),  (2017). 
+[1] Liu, Q., Lee, J. D., & Jordan, M. I., A kernelized stein discrepancy for goodness-of-fit tests and model evaluation, CoRR, (),  (2016). 
+
+[2] Jitkrittum, W., Xu, W., Szabo, Z., Fukumizu, K., & Gretton, A., A Linear-Time Kernel Goodness-Of-Fit Test, CoRR, (),  (2017). 
