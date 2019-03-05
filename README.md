@@ -128,6 +128,9 @@ y = x
 contour!(x, y, (x, y) -> pdf(q, [x; y]), nlevels = 10, width = 0.2)
 f
 ```
+You should then see something similar to this plot:
+
+![Test locations and data](https://github.com/torfjelde/KernelGoodnessOfFit.jl/blob/master/GMM_2D_test.png)
 
 ## Different kernels
 The package include the following (universal) kernels:
