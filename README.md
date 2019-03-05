@@ -1,4 +1,4 @@
-# `KernelGoodnessofFit.jl`
+# `KernelGoodnessOfFit.jl`
 
 This package provides implementations goodness-of-fit tests based on Stein discrepancy and Reproducing Kernel Hilbert Spaces (RKHSs). At the moment, the goodness-of-fit tests supported are
 - `KSD`: goodness-of-fit test based on Kernelized Stein Discrepancy (KSD) with bootstrapping [1]
