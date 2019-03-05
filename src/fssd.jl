@@ -319,11 +319,11 @@ unpack(k::ExponentialKernel, θ::AbstractVector, d::Integer, J::Integer) = (), r
 # pack(k::MaternKernel, vs::AbstractArray) = vcat(log(k.ν), log(k.ρ), vs...)
 # unpack(k::MaternKernel, θ::AbstractArray, d::Integer, J::Integer) = exp.(θ[1:2]), reshape(θ[3:end], d, J)
 pack(k::Matern25Kernel, vs::AbstractArray) = vcat(log(k.ρ), vs...)
-unpack(k::Matern25Kernel, θ::AbstractArray, d::Integer, J::Integer) = exp.(θ[1:1]), reshape(θ[2:end], d, J)
+unpack(k::Matern25Kernel, θ::AbstractVector, d::Integer, J::Integer) = exp.(θ[1:1]), reshape(θ[2:end], d, J)
 
 ### InverseMultiQuadratic (IMQ): c > 0, b < 0
 pack(k::InverseMultiQuadratic, vs::AbstractArray) = vcat(log(k.c), log(- k.b), vs...)
-unpack(k::InverseMultiQuadratic, θ::AbstractArray, d::Integer, J::Integer) = (exp(θ[1]), - exp(θ[2])), reshape(θ[3:end], d, J)
+unpack(k::InverseMultiQuadratic, θ::AbstractVector, d::Integer, J::Integer) = (exp(θ[1]), - exp(θ[2])), reshape(θ[3:end], d, J)
 
 
 function optimize_power(k::K, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :forward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, β_H₁ = 0.0, ε = 0.01, lower::AbstractArray = [], upper::AbstractArray = [], test_locations_only = false) where K <: Kernel
