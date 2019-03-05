@@ -294,6 +294,18 @@ function fssd_H₁_opt_factor(k, p, xs, vs; ε = 0.01, β_H₁ = 0.01)
     return (s ./ (σ₁ + ε)) .- β_H₁ * (σ₁ + (σ₁ + 1e-6)^(-1))
 end
 
+### Defaults
+pack(k::Kernel, vs::AbstractArray) = vcat(get_params(k)..., vs...)
+unpack(k::Kernel, θ::AbstractVector, d::Integer, J::Integer) = begin
+    k_dim = length(get_params(k))
+    return θ[1:k_dim], reshape(θ[k_dim + 1: end], d, J)
+end
+
+# only test-locations
+pack(vs::AbstractArray) = vcat(vs...)
+unpack(θ::AbstractVector, d::Integer, J::Integer) = reshape(θ, d, J)
+
+
 ### Gaussian kernel optimization: {σₖ, V}
 pack(k::GaussianRBF, vs::AbstractArray) = vcat(log(k.gamma), vs...)
 unpack(k::GaussianRBF, θ::AbstractVector, d::Integer, J::Integer) = (exp(θ[1]), ), reshape(θ[2:end], d, J)
@@ -313,9 +325,6 @@ unpack(k::Matern25Kernel, θ::AbstractArray, d::Integer, J::Integer) = exp.(θ[1
 pack(k::InverseMultiQuadratic, vs::AbstractArray) = vcat(log(k.c), log(- k.b), vs...)
 unpack(k::InverseMultiQuadratic, θ::AbstractArray, d::Integer, J::Integer) = (exp(θ[1]), - exp(θ[2])), reshape(θ[3:end], d, J)
 
-# defaults
-pack(vs::AbstractArray) = vcat(vs...)
-unpack(θ::AbstractVector, d::Integer, J::Integer) = reshape(θ, d, J)
 
 function optimize_power(k::K, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :forward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, β_H₁ = 0.0, ε = 0.01, lower::AbstractArray = [], upper::AbstractArray = [], test_locations_only = false) where K <: Kernel
     d, J = size(vs)
