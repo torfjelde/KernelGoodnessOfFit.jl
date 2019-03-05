@@ -113,45 +113,13 @@ set_params!(k::InverseMultiQuadratic, c, b) = begin
 end
 
 ### Derivatives
+# These functions can be implemented manually for particular kernels were analytic expressions are easily attainble,
+# The below allow the use to implement any arbitrary kernel, and then we can optimize over it.
 
-# define the necessary derivatives of kernel
-function k_dx(::Kernel, x::AbstractArray, y::AbstractArray) end
-function k_dy(::Kernel, x::AbstractArray, y::AbstractArray) end
-function k_dxdy(::Kernel, x::AbstractArray, y::AbstractArray) end
+@inline k_dx(k::Kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, z, y), x);
+@inline k_dy(k::Kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, x, z), y);
+@inline k_dxdy(k::Kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.jacobian(z -> k_dx(k, x, z), y);
 
-# TODO: make derivatives using `SymPy` instead, as we can simply the expressions
-# for numerical stability!
-# => NOPE. Can't do this for arbitrary dimensions...
-
-"Overloads the derivative operations for `kernel`."
-macro make_derivatives(kernel, autodiff::Symbol = :forward)
-    # call `eval` to overload methods in scope
-    if autodiff == :forward
-        eval(quote
-             @inline k_dx(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, z, y), x);
-             @inline k_dy(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, x, z), y);
-             @inline k_dxdy(k::$kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.jacobian(z -> k_dx(k, x, z), y);
-
-             @inline k_dx(k::$kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> kernel(k, z, y), x);
-             @inline k_dy(k::$kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> kernel(k, x, z), y);
-             @inline k_dxdy(k::$kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> k_dx(k, x, z), y);
-             end)
-    elseif autodiff == :backward
-        eval(quote
-             @inline k_dx(k::$kernel, x::AbstractArray, y::AbstractArray) = ReverseDiff.gradient(z -> kernel(k, z, y), x);
-             @inline k_dy(k::$kernel, x::AbstractArray, y::AbstractArray) = ReverseDiff.gradient(z -> kernel(k, x, z), y);
-             @inline k_dxdy(k::$kernel, x::AbstractArray, y::AbstractArray) = ReverseDiff.jacobian(z -> k_dx(k, x, z), y);
-
-             # TODO: `ReverseDiff` does not support taking derivatives, as reverse-mode differentiation used useful for N -> 1 case not 1 -> 1 case
-             end)
-    else
-        throw(ValueError("unsupported autodiff method $autodiff"))
-    end
-end
-
-# does so for the relevant kernels
-@make_derivatives GaussianRBF
-@make_derivatives ExponentialKernel
-# @make_derivatives MaternKernel
-@make_derivatives Matern25Kernel
-@make_derivatives InverseMultiQuadratic
+@inline k_dx(k::Kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> kernel(k, z, y), x);
+@inline k_dy(k::Kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> kernel(k, x, z), y);
+@inline k_dxdy(k::Kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> k_dx(k, x, z), y);
