@@ -199,6 +199,9 @@ Details:
     num. simulate H₀: 3000
 ```
 
+# TODO
+- [ ] Rewrite `KSD` to implement the hypothesis-test interface from `HypothesisTests.jl`
+
 # References
 [1] Liu, Q., Lee, J. D., & Jordan, M. I., A kernelized stein discrepancy for goodness-of-fit tests and model evaluation, CoRR, (),  (2016). 
 
