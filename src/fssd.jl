@@ -166,7 +166,7 @@ pvalue(t::FSSDrand) = t.p_val
 # asymptotic (normal) distribution under H₁
 
 # Compute ∇ of 
-function ξ(k, p, x, v)
+function ξ(k::Kernel, p::Distribution, x::AbstractVector, v::AbstractVector)
     logp_dx = gradlogpdf(p, x)
     kdx = KernelGoodnessOfFit.k_dx(k, x, v)
 
@@ -342,7 +342,7 @@ function optimize_power(k::K, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol =
             return - fssd_H₁_opt_factor(k, p, xs, V; ε = ε, β_H₁ = β_H₁)
         else
             kernel_params, V = unpack(k, θ, d, J)
-            ker = K(kernel_params...)
+            ker = update(k, kernel_params...)
 
             # add regularization to the parameter
             # TODO: currently using matrix norm for `V` => should we use a vector for β_V and use vector nor?

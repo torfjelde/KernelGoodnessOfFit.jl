@@ -32,31 +32,39 @@ kernel(k::Kernel) = begin
     (x, y) -> kernel(k, x, y)
 end
 
+### Derivatives
+# These functions can be implemented manually for particular kernels were analytic expressions are easily attainble,
+# The below allow the use to implement any arbitrary kernel, and then we can optimize over it.
+
+k_dx(k::Kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, z, y), x);
+k_dy(k::Kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, x, z), y);
+k_dxdy(k::Kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.jacobian(z -> k_dx(k, x, z), y);
+
+k_dx(k::Kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> kernel(k, z, y), x);
+k_dy(k::Kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> kernel(k, x, z), y);
+k_dxdy(k::Kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> k_dx(k, x, z), y);
+
+
 ### Gaussian Radial Basis Function ###
 struct GaussianRBF <: Kernel
     gamma
 end
 
-params(k::GaussianRBF, gamma) = (gamma, )
-update(k::GaussianRBF, gamma) = GaussianRBF(gamma)
-update(k::GaussianRBF, gamma::AbstractArray) = update(k, first(gamma))
+@inline params(k::GaussianRBF, gamma) = (gamma, )
+@inline update(k::GaussianRBF, gamma) = GaussianRBF(gamma)
+@inline update(k::GaussianRBF, gamma::AbstractArray) = update(k, first(gamma))
 
-kernel(k::GaussianRBF, x::AbstractVector, y::AbstractVector) = begin
+@inline function kernel(k::GaussianRBF, x::AbstractVector, y::AbstractVector)
     # added factor of 0.5 to get same result as code attached to paper
-    exp(- 0.5 * k.gamma^(-2) * sum((x - y).^2))
-end
-
-kernel(k::GaussianRBF, x::AbstractVector, y::AbstractVector, γ::Number) = begin
-    # added factor of 0.5 to get same result as code attached to paper
-    exp(- 0.5 * γ^(-2) * sum((x - y).^2))
+    return exp(- 0.5 * k.gamma^(-2) * sum((x - y).^2))
 end
 
 ### Exponential kernel
 struct ExponentialKernel <: Kernel end
-kernel(k::ExponentialKernel, x::AbstractVector, y::AbstractVector) = begin
-    exp(dot(x, y))
+@inline function kernel(k::ExponentialKernel, x::AbstractVector, y::AbstractVector)
+    return exp(dot(x, y))
 end
-update(k::ExponentialKernel) = k
+@inline update(k::ExponentialKernel) = k
 
 # Works with FSSDrand and FSSDopt for SOME values, and only using `finite-differences` to optimize.
 """
@@ -81,8 +89,8 @@ end
     tmp = √(2ν)*d /κ.ρ
     return (2^(1.0 - ν)) * (tmp^ν) * besselk(ν, tmp) / gamma(ν)
 end
-params(k::Matern25Kernel) = (k.ρ, )
-update(k::Matern25Kernel, ρ) = Matern25Kernel(ρ)
+@inline params(k::Matern25Kernel) = (k.ρ, )
+@inline update(k::Matern25Kernel, ρ) = Matern25Kernel(ρ)
 
 ### InverseMultiQuadratic (IMQ) kernel
 struct InverseMultiQuadratic <: Kernel
@@ -90,20 +98,8 @@ struct InverseMultiQuadratic <: Kernel
     b  # < 0
 end
 
-function kernel(k::InverseMultiQuadratic, x::AbstractVector, y::AbstractVector)
+@inline function kernel(k::InverseMultiQuadratic, x::AbstractVector, y::AbstractVector)
     (k.c^2 + norm(x - y)^2)^k.b
 end
-params(k::InverseMultiQuadratic) = (k.c, k.b)
-update(k::InverseMultiQuadratic, c, b) = InverseMultiQuadratic(c, b)
-
-### Derivatives
-# These functions can be implemented manually for particular kernels were analytic expressions are easily attainble,
-# The below allow the use to implement any arbitrary kernel, and then we can optimize over it.
-
-k_dx(k::Kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, z, y), x);
-k_dy(k::Kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, x, z), y);
-k_dxdy(k::Kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.jacobian(z -> k_dx(k, x, z), y);
-
-k_dx(k::Kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> kernel(k, z, y), x);
-k_dy(k::Kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> kernel(k, x, z), y);
-k_dxdy(k::Kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> k_dx(k, x, z), y);
+@inline params(k::InverseMultiQuadratic) = (k.c, k.b)
+@inline update(k::InverseMultiQuadratic, c, b) = InverseMultiQuadratic(c, b)
