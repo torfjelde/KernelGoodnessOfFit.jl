@@ -42,9 +42,6 @@ struct FSSDResult <: KernelGoodnessOfFitResult
 end
 
 abstract type FSSD <: KernelGoodnessOfFitTest end
-set_locs!(t::FSSD, V::AbstractArray) = begin
-    t.V = V
-end
 
 # test stuff
 population_param_of_interest(t::T where T <: FSSD) = ("Finite-Set Stein Discrepancy (FSSD)", 0, t.stat)
@@ -68,9 +65,7 @@ mutable struct FSSDopt{K} <: FSSD where {K <: Kernel}
     # bounds::AbstractArray     # bounds for the the variables to optimize over (e.g. test locations V, kernel params)
 end
 
-"""
-    
-"""
+
 FSSDopt(x::AbstractArray, q, k::Kernel, V::AbstractArray; nsim = 3000, train_test_ratio = 0.5, kwargs...) = begin
     n = size(x, 2)
     d, J = size(V)
