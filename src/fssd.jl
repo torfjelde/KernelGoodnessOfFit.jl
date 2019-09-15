@@ -55,18 +55,24 @@ end
 ###############
 ### FSSDopt ###
 ###############
-mutable struct FSSDopt{K} <: FSSD where {K <: Kernel}
+mutable struct FSSDopt{K, A} <: FSSD where {K<:Kernel, T<:Real, A<:AbstractArray{T, 2}}
     stat::Float64             # FSSD estimate
     p_val::Float64            # p-value
     k::K                      # kernel
-    V::AbstractArray          # test locations
+    V::A                      # test locations
     num_simulate::Int         # number of simulations used to approximation null-dist
     train_test_ratio::Float64 # ratio to use as TRAINING data
     # bounds::AbstractArray     # bounds for the the variables to optimize over (e.g. test locations V, kernel params)
 end
 
 
-FSSDopt(x::AbstractArray, q, k::Kernel, V::AbstractArray; nsim = 3000, train_test_ratio = 0.5, kwargs...) = begin
+function FSSDopt(
+    x::AbstractArray{T1, 2},
+    q::Distribution,
+    k::Kernel,
+    V::AbstractArray{T2, 2};
+    nsim = 3000, train_test_ratio = 0.5, kwargs...
+) where {T1, T2}
     n = size(x, 2)
     d, J = size(V)
 
@@ -78,9 +84,7 @@ FSSDopt(x::AbstractArray, q, k::Kernel, V::AbstractArray; nsim = 3000, train_tes
     kernel_params, V, opt_res = optimize_power(k, V, train, q; kwargs...)
 
     # update kernel
-    if !isempty(kernel_params)
-        set_params!(k, kernel_params...)
-    end
+    k_new = update(k, kernel_params...)
 
     res = perform(k, V, test, q; num_simulate = nsim)
     FSSDopt(res.stat, res.p_val, k, V, nsim, train_test_ratio)
@@ -338,7 +342,7 @@ function optimize_power(k::K, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol =
             return - fssd_H₁_opt_factor(k, p, xs, V; ε = ε, β_H₁ = β_H₁)
         else
             kernel_params, V = unpack(k, θ, d, J)
-            ker = isempty(kernel_params) ? K() : K(kernel_params...)
+            ker = K(kernel_params...)
 
             # add regularization to the parameter
             # TODO: currently using matrix norm for `V` => should we use a vector for β_V and use vector nor?
