@@ -40,14 +40,14 @@ k_dx(k::Kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> 
 k_dy(k::Kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.gradient(z -> kernel(k, x, z), y);
 k_dxdy(k::Kernel, x::AbstractArray, y::AbstractArray) = ForwardDiff.jacobian(z -> k_dx(k, x, z), y);
 
-k_dx(k::Kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> kernel(k, z, y), x);
-k_dy(k::Kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> kernel(k, x, z), y);
-k_dxdy(k::Kernel, x::Number, y::Number) = ForwardDiff.derivative(z -> k_dx(k, x, z), y);
+k_dx(k::Kernel, x::Real, y::Real) = ForwardDiff.derivative(z -> kernel(k, z, y), x);
+k_dy(k::Kernel, x::Real, y::Real) = ForwardDiff.derivative(z -> kernel(k, x, z), y);
+k_dxdy(k::Kernel, x::Real, y::Real) = ForwardDiff.derivative(z -> k_dx(k, x, z), y);
 
 
 ### Gaussian Radial Basis Function ###
-struct GaussianRBF <: Kernel
-    gamma
+struct GaussianRBF{T} <: Kernel
+    gamma::T
 end
 
 @inline params(k::GaussianRBF, gamma) = (gamma, )
@@ -57,6 +57,29 @@ end
 @inline function kernel(k::GaussianRBF, x::AbstractVector, y::AbstractVector)
     # added factor of 0.5 to get same result as code attached to paper
     return exp(- 0.5 * k.gamma^(-2) * sum((x - y).^2))
+end
+
+@inline function k_dx(k::GaussianRBF, x::AbstractArray, y::AbstractArray)
+    #   ∂₁ᵏ(exp(- 0.5 γ⁻² ∑ᵢ (xⁱ - yⁱ)^2))
+    # = exp(- 0.5 γ⁻² ∑ᵢ (xⁱ - yⁱ)^2) ∂₁ᵏ (- 0.5 γ⁻² ∑ᵢ (xⁱ - yⁱ)^2)
+    # = - 0.5 γ⁻² exp(- 0.5 γ⁻² ∑ᵢ (xⁱ - yⁱ)^2) ∂₁ᵏ (∑ᵢ (xⁱ - yⁱ)^2)
+    # = - 0.5 γ⁻² * k(x, y) * 2 * (xᵏ - yᵏ)
+    # = - γ⁻² * k(x, y) * (xᵏ - yᵏ)
+    return - k.gamma^(-2) * (x - y) .* kernel(k, x, y)
+end
+
+@inline k_dy(k::GaussianRBF, x::AbstractArray, y::AbstractArray) = k_dx(k, y, x)
+@inline function k_dxdy(k::GaussianRBF, x::AbstractArray, y::AbstractArray)
+    #   ∂₂ⁱ (∂₁ʲ k(x, y))
+    # = ∂₂ⁱ (- γ⁻² * k(x, y) * (xʲ - yʲ))
+    # = - γ⁻² [ (∂₂ⁱ k(x, y)) * (xʲ - yʲ) + k(x, y) * ∂₂ⁱ (xʲ - yʲ) ]
+    # FIXME: there's a sign-error here somewhere
+    # = - γ⁻² [ - γ⁻² k(x, y) * (xⁱ - yⁱ) * (xʲ - yʲ) + k(x, y) * δⁱʲ]
+    # = - γ⁻² k(x, y) [ - γ⁻²  (xⁱ - yⁱ) * (xʲ - yʲ) + δⁱʲ]
+    # = γ⁻² k(x, y) [ γ⁻²  (xⁱ - yⁱ) * (xʲ - yʲ) - δⁱʲ]
+    Δ = (x - y)
+    γ⁻² = k.gamma^(-2)
+    return - (γ⁻² .* (Δ * Δ') - Diagonal(ones(length(x)))) .* γ⁻² .* kernel(k, x, y)
 end
 
 ### Exponential kernel

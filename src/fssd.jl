@@ -173,6 +173,24 @@ function ξ(k::Kernel, p::Distribution, x::AbstractVector, v::AbstractVector)
     return logp_dx * kernel(k, x, v) + kdx
 end
 
+function compute_Ξ(k, p, xs, vs)
+    # TODO: change to use `size(vs, 2)` and so on
+    J = size(vs)[2]  # number of test points
+    n = size(xs)[2]  # number of samples
+    d = size(xs)[1]  # dimension of the inputs
+
+    [hcat([ξ(k, p, xs[:, i], vs[:, m]) / sqrt(d * J) for i = 1:n]...) for m = 1:J]
+end
+
+function compute_Ξ(k, p::D where D <: Distribution{Univariate, Continuous}, xs, vs)
+    # TODO: change to use `size(vs, 2)` and so on
+    J = size(vs)[2]  # number of test points
+    n = size(xs)[2]  # number of samples
+    d = size(xs)[1]  # dimension of the inputs
+
+    [hcat([ξ(k, p, xs[1, i], vs[1, m]) / sqrt(d * J) for i = 1:n]...) for m = 1:J]
+end
+
 
 function fssd(Ξ)
     J = size(Ξ)[1]
@@ -235,25 +253,6 @@ function fssd_old(k, p, xs, vs)
     tot
 end
 
-function compute_Ξ(k, p, xs, vs)
-    # TODO: change to use `size(vs, 2)` and so on
-    J = size(vs)[2]  # number of test points
-    n = size(xs)[2]  # number of samples
-    d = size(xs)[1]  # dimension of the inputs
-
-    [hcat([ξ(k, p, xs[:, i], vs[:, m]) / sqrt(d * J) for i = 1:n]...) for m = 1:J]
-end
-
-function compute_Ξ(k, p::D where D <: Distribution{Univariate, Continuous}, xs, vs)
-    # TODO: change to use `size(vs, 2)` and so on
-    J = size(vs)[2]  # number of test points
-    n = size(xs)[2]  # number of samples
-    d = size(xs)[1]  # dimension of the inputs
-
-    [hcat([ξ(k, p, xs[1, i], vs[1, m]) / sqrt(d * J) for i = 1:n]...) for m = 1:J]
-end
-
-
 function τ_from_Ξ(Ξ)
     vcat(Ξ...)
 end
@@ -294,9 +293,9 @@ function fssd_H₁_opt_factor(k, p, xs, vs; ε = 0.01, β_H₁ = 0.01)
 end
 
 ### Defaults
-pack(k::Kernel, vs::AbstractArray) = vcat(get_params(k)..., vs...)
+pack(k::Kernel, vs::AbstractArray) = vcat(params(k)..., vs...)
 unpack(k::Kernel, θ::AbstractVector, d::Integer, J::Integer) = begin
-    k_dim = length(get_params(k))
+    k_dim = length(params(k))
     return θ[1:k_dim], reshape(θ[k_dim + 1: end], d, J)
 end
 
