@@ -86,8 +86,8 @@ function FSSDopt(
     # update kernel
     k_new = update(k, kernel_params...)
 
-    res = perform(k, V, test, q; num_simulate = nsim)
-    FSSDopt(res.stat, res.p_val, k, V, nsim, train_test_ratio)
+    res = perform(k_new, V, test, q; num_simulate = nsim)
+    FSSDopt(res.stat, res.p_val, k_new, V, nsim, train_test_ratio)
 end
 
 FSSDopt(x::AbstractArray, q, k::Kernel; J::Int = 5, kwargs...) = begin
