@@ -166,11 +166,36 @@ pvalue(t::FSSDrand) = t.p_val
 # asymptotic (normal) distribution under H₁
 
 # Compute ∇ of 
-function ξ(k::Kernel, p::Distribution, x, v)
+function ξ(k::Kernel, p::MultivariateDistribution, x::AbstractArray, v::AbstractArray)
     logp_dx = gradlogpdf(p, x)
     kdx = KernelGoodnessOfFit.k_dx(k, x, v)
 
     return logp_dx * kernel(k, x, v) + kdx
+end
+
+function ξ(k::Kernel, p::UnivariateDistribution, x::Real, v::Real)
+    logp_dx = gradlogpdf(p, x)
+    kdx = KernelGoodnessOfFit.k_dx(k, x, v)
+
+    return logp_dx * kernel(k, x, v) + kdx
+end
+
+Ξ(k::Kernel, p::UnivariateDistribution, x::Real, vs::AbstractVector) = ξ.(k, p, x, vs)
+Ξ(k::Kernel, p::UnivariateDistribution, xs::AbstractVector, v::Real) = ξ.(k, p, xs, v)
+function Ξ(k::Kernel, p::UnivariateDistribution, xs::AbstractVector, vs::AbstractVector)
+    J = length(vs)
+    return hcat([ξ.(k, p, xs, vs[i]) for i = 1:J]...)
+end
+
+function Ξ(k::Kernel, p::MultivariateDistribution, x::AbstractVector, vs::AbstractMatrix)
+    return mapslices(v -> ξ(k, p, x, v), vs; dims = 1)
+end
+function Ξ(k::Kernel, p::MultivariateDistribution, xs::AbstractMatrix, v::AbstractVector)
+    return mapslices(x -> ξ(k, p, x, v), xs; dims = 1)
+end
+function Ξ(k::Kernel, p::MultivariateDistribution, xs::AbstractMatrix, vs::AbstractMatrix)
+    J = size(vs, 2)
+    return cat([Ξ(k, p, xs, vs[:, i]) for i = 1:J]...; dims = 3)
 end
 
 function compute_Ξ(k, p, xs, vs)

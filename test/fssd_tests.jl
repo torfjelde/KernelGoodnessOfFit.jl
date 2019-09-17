@@ -107,3 +107,62 @@ end
     @test t_forward ≥ 0.0
     @test t_forward < t_difference
 end
+
+# NEW STUFF
+@testset "FSSD: ξ" begin
+    using KernelGoodnessOfFit: ξ
+
+    k = GaussianRBF(1.0)
+
+    # univariate
+    d = Normal(1.0, 1.0)
+    x = rand(d)
+    v = randn()
+
+    @test size(ξ(k, d, x, v)) == ()
+
+    # multivariate
+    d = MvNormal(ones(2), ones(2))
+    x = rand(d)
+    v = randn(2)
+
+    @test size(ξ(k, d, x, v)) == size(x)
+end
+
+@testset "FSSD: Ξ" begin
+    using KernelGoodnessOfFit: ξ, Ξ
+
+    k = GaussianRBF(1.0)
+
+    J = 3
+    n = 5
+
+    # Univariate
+    p = Normal(1.0, 1.0)
+    xs = rand(p, n)
+    x = xs[1]
+
+    vs = randn(J)
+    v = vs[1]
+
+    @test Ξ(k, p, x, vs) == [ξ(k, p, x, vs[i]) for i = 1:J]
+    @test size(ξ(k, p, x, v)) == size(x)
+    @test size(Ξ(k, p, x, vs)) == (J, )
+    @test size(Ξ(k, p, xs, v)) == (n, )
+    @test size(Ξ(k, p, xs, vs)) == (n, J)
+
+    # Multivariate
+    d = 2
+    p = MvNormal(ones(d), ones(d))
+    xs = rand(p, n)
+    x = xs[:, 1]
+
+    vs = randn(2, J)
+    v = vs[:, 1]
+
+    @test Ξ(k, p, x, vs) == hcat([ξ(k, p, x, vs[:, i]) for i = 1:J]...)
+    @test size(ξ(k, p, x, v)) == size(x)
+    @test size(Ξ(k, p, x, vs)) == (d, J)
+    @test size(Ξ(k, p, xs, v)) == (d, n)
+    @test size(Ξ(k, p, xs, vs)) == (d, n, J)
+end
