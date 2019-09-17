@@ -1,14 +1,14 @@
-using Distributions
-using Test
-using KernelGoodnessOfFit
+# using Distributions
+# using Test
+# using KernelGoodnessOfFit
 
-@testset "Univeriate Normal" begin
-    xs = randn(1, 100);
-    q = Normal(1.0, 1.0)
+# @testset "Univeriate Normal" begin
+#     xs = randn(1, 100);
+#     q = Normal(1.0, 1.0)
 
-    t1 = FSSDrand(xs, q)
+#     t1 = FSSDrand(xs, q)
 
-    println(t1)
+#     println(t1)
 
-    @test pvalue(t1) ≥ 0.0
-end
+#     @test pvalue(t1) ≥ 0.0
+# end

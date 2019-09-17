@@ -1,5 +1,7 @@
-using Distributions, ForwardDiff
+using Test, Distributions, ForwardDiff
 using KernelGoodnessOfFit
+
+using Random; Random.seed!(123)
 
 # setup the problem
 rbf_ = GaussianRBF(1.0)
