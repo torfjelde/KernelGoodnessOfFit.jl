@@ -1,9 +1,8 @@
-using Test, Distributions, HypothesisTests, LinearAlgebra
+using Test, Random, Distributions, HypothesisTests, LinearAlgebra
 using KernelGoodnessOfFit
 
-xs = randn(1, 100);
-
 @testset "FSSDrand" begin
+    Random.seed!(123)
     xs = randn(100);
     
     res = KernelGoodnessOfFit.FSSDrand(
@@ -14,13 +13,12 @@ xs = randn(1, 100);
         nsim = 3000
     )
 
-    println(res)
-
     # reject
     @test pvalue(res) ≤ 0.05
 end
 
 @testset "FSSDopt" begin
+    Random.seed!(123)
     xs = randn(100);
     
     res = KernelGoodnessOfFit.FSSDopt(
@@ -32,13 +30,29 @@ end
         train_test_ratio = 0.5
     )
 
-    println(res)
+    # reject
+    @test pvalue(res) ≤ 0.05
+end
+
+@testset "FSSDopt univariate" begin
+    Random.seed!(123)
+    xs = randn(100);
+
+    res = KernelGoodnessOfFit.FSSDopt(
+        reshape(xs, 1, :),
+        Normal(1.0, 1.0),
+        GaussianRBF(1.0),
+        reshape([0.0], 1, 1),
+        nsim = 3000,
+        train_test_ratio = 0.5
+    )
 
     # reject
     @test pvalue(res) ≤ 0.05
 end
 
 @testset "FSSDrand multivariate" begin
+    Random.seed!(123)
     d = 5
     xs = randn(d, 100);
     
@@ -50,13 +64,12 @@ end
         nsim = 3000
     )
 
-    println(res)
-
     # reject
     @test pvalue(res) ≤ 0.05
 end
 
 @testset "FSSDopt multivariate" begin
+    Random.seed!(123)
     d = 5
     xs = randn(d, 100);
 
@@ -73,7 +86,10 @@ end
     @test res ≤ 0.05
 end
 
+
 @testset "FSSDrand different kernels" begin
+    Random.seed!(123)
+    xs = randn(1, 100);
     q = MvNormal([10.0], [1.0])
 
     t_rbf = FSSDrand(xs, q, KernelGoodnessOfFit.GaussianRBF(1.0))
@@ -86,6 +102,9 @@ end
 end
 
 @testset "FSSDopt different kernels" begin
+    Random.seed!(123)
+    xs = randn(1, 100);
+
     q = MvNormal([10.0], [1.0])
 
     t_rbf = FSSDopt(xs, q, KernelGoodnessOfFit.GaussianRBF(1.0))
