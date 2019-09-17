@@ -9,6 +9,8 @@ abstract type Kernel end
 function kernel(k::Kernel, x::AbstractVector, y::AbstractVector) end
 kernel(k::Kernel, x::Number, y::Number) = kernel(k, [x], [y])
 
+Broadcast.broadcastable(k::Kernel) = Ref(k)
+
 """
     params(k::Kernel)
 
@@ -81,6 +83,10 @@ end
     γ⁻² = k.gamma^(-2)
     return - (γ⁻² .* (Δ * Δ') - Diagonal(ones(length(x)))) .* γ⁻² .* kernel(k, x, y)
 end
+
+@inline k_dx(k::GaussianRBF, x::Real, y::Real) = first(k_dx(k, [x], [y]))
+@inline k_dy(k::GaussianRBF, x::Real, y::Real) = first(k_dy(k, [x], [y]))
+@inline k_dxdy(k::GaussianRBF, x::Real, y::Real) = first(k_dxdy(k, [x], [y]))
 
 ### Exponential kernel
 struct ExponentialKernel <: Kernel end
