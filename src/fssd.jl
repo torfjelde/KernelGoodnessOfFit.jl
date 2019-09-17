@@ -337,16 +337,29 @@ end
 
 function fssd_H₁_opt_factor(k, p, xs, vs; ε = 0.01, β_H₁ = 0.01)
     J = size(vs, 2)
-    Ξ_xs = [Ξ(k, p, xs, vs[:, i], J) for i = 1:J]
-    s = fssd_from_Ξ(Ξ_xs)
-    τ = τ_from_Ξ(Ξ_xs)
-    μ, Σ = Σₚ(τ)
+    τ_xs = τ_from_Ξ([Ξ(k, p, xs, vs[:, i], J) for i = 1:J])
+    s = fssd_from_τ(τ_xs)
+    μ, Σ = Σₚ(τ_xs)
     σ₁ = σ²_H₁(μ, Σ)
 
     # asymptotic under H₁ depends O(√n) on (FSSD² / σ₁² + ε)
     # subtract regularization term because we're going to multiply by minus
     # also, we want to stop it from being too SMALL, so regularize inverse of it
     return (s ./ (σ₁ + ε)) .- β_H₁ * (σ₁ + (σ₁ + 1e-6)^(-1))
+end
+
+function fssd_H₁_opt_factor(k::Kernel, p::UnivariateDistribution, xs::AbstractVector, vs::AbstractVector; ε = 0.01, β_H₁ = 0.01)
+    J = size(vs, 1)
+
+    # in univariate case Ξ = τ
+    τ = Ξ(k, p, xs, vs)
+
+    s = fssd_from_τ(τ)
+
+    μ, Σ = Σₚ(τ)
+    σ₁ = σ²_H₁(μ, Σ)
+
+    return (s / (σ₁ + ε)) .- β_H₁ * (σ₁ + (σ₁ + 1e-6)^(-1))
 end
 
 ### Defaults
@@ -364,57 +377,96 @@ unpack(θ::AbstractVector, d::Integer, J::Integer) = reshape(θ, d, J)
 ### Gaussian kernel optimization: {σₖ, V}
 pack(k::GaussianRBF, vs::AbstractArray) = vcat(log(k.gamma), vs...)
 unpack(k::GaussianRBF, θ::AbstractVector, d::Integer, J::Integer) = (exp(θ[1]), ), reshape(θ[2:end], d, J)
+unpack(k::GaussianRBF, θ::AbstractVector) = (exp(θ[1]), ), θ[2:end]
 
 
 ### Exponential kernel pack / unpack
 pack(k::ExponentialKernel, vs::AbstractArray) = vcat(vs...)
 unpack(k::ExponentialKernel, θ::AbstractVector, d::Integer, J::Integer) = (), reshape(θ, d, J)
+unpack(k::ExponentialKernel, θ::AbstractVector) = (), θ
 
 # ### Matern Kernel: do the log-exp transform to enforce positive
 # pack(k::MaternKernel, vs::AbstractArray) = vcat(log(k.ν), log(k.ρ), vs...)
 # unpack(k::MaternKernel, θ::AbstractArray, d::Integer, J::Integer) = exp.(θ[1:2]), reshape(θ[3:end], d, J)
 pack(k::Matern25Kernel, vs::AbstractArray) = vcat(log(k.ρ), vs...)
 unpack(k::Matern25Kernel, θ::AbstractVector, d::Integer, J::Integer) = exp.(θ[1:1]), reshape(θ[2:end], d, J)
+unpack(k::Matern25Kernel, θ::AbstractVector) = exp.(θ[1:1]), θ[2:end]
 
 ### InverseMultiQuadratic (IMQ): c > 0, b < 0
 pack(k::InverseMultiQuadratic, vs::AbstractArray) = vcat(log(k.c), log(- k.b), vs...)
 unpack(k::InverseMultiQuadratic, θ::AbstractVector, d::Integer, J::Integer) = (exp(θ[1]), - exp(θ[2])), reshape(θ[3:end], d, J)
+unpack(k::InverseMultiQuadratic, θ::AbstractVector) = (exp(θ[1]), - exp(θ[2])), θ[3:end]
 
+
+function make_objective(
+    k::Kernel,
+    p::UnivariateDistribution,
+    xs::AbstractVector,
+    vs::AbstractVector,
+    test_locs_only::Val{onlylocs} = Val{false}();
+    method::Symbol = :lbfgs,
+    diff::Symbol = :forward
+) where {onlylocs}
+    J = size(vs, 1)
+
+    if onlylocs
+        return θ -> begin
+            V = θ  # nothing to reshape here so we good
+            return - fssd_H₁_opt_factor(k, p, xs, V)
+        end
+    else
+        return θ -> begin
+            kernel_params, V = unpack(k, θ)
+            ker = update(k, kernel_params...)
+            
+            return - fssd_H₁_opt_factor(ker, p, xs, V)
+        end
+    end
+end
+
+function make_objective(
+    k::Kernel,
+    p::MultivariateDistribution,
+    xs::AbstractMatrix,
+    vs::AbstractMatrix,
+    test_locs_only::Val{onlylocs} = Val{false}();
+    β_H₁ = 0.0,
+    ε = 0.01
+) where {onlylocs}
+    d, n = size(xs)
+    J = size(vs, 2)
+
+    if onlylocs
+        return θ -> begin
+            V = unpack(θ, d, J)  # nothing to reshape here so we good
+            return - fssd_H₁_opt_factor(k, p, xs, V; ε = ε, β_H₁ = β_H₁)
+        end
+    else
+        return θ -> begin
+            kernel_params, V = unpack(k, θ, d, J)
+            ker = update(k, kernel_params...)
+            
+            return - fssd_H₁_opt_factor(ker, p, xs, V; ε = ε, β_H₁ = β_H₁)
+        end
+    end
+end
 
 function optimize_power(k::K, vs, xs, p; method::Symbol = :lbfgs, diff::Symbol = :forward, num_steps = 10, step_size = 0.1, β_σ = 0.0, β_V = 0.0, β_H₁ = 0.0, ε = 0.01, lower::AbstractArray = [], upper::AbstractArray = [], test_locations_only = false) where K <: Kernel
     d, J = size(vs)
 
-    # pack and combine
-    if test_locations_only
-        θ₀ = pack(vs)
-    else
-        θ₀ = pack(k, vs)
-    end
-
     # define objective (don't call unwrap_θ for that perf yo)
-    function f(θ)
-        if test_locations_only
-            V = unpack(θ, d, J)
-            return - fssd_H₁_opt_factor(k, p, xs, V; ε = ε, β_H₁ = β_H₁)
-        else
-            kernel_params, V = unpack(k, θ, d, J)
-            ker = update(k, kernel_params...)
+    f = make_objective(
+        k, p, xs, vs, Val{test_locations_only}();
+        β_H₁ = β_H₁, ε = ε
+    )
 
-            # add regularization to the parameter
-            # TODO: currently using matrix norm for `V` => should we use a vector for β_V and use vector nor?
-            if β_σ > 0.0 || β_V > 0.0
-                # TODO: remove this; don't wnat to only be able to use one kernel
-                return - fssd_H₁_opt_factor(ker, p, xs, V; ε = ε, β_H₁ = β_H₁) + β_σ ./ (σ^2 + 1e-6) + β_V * norm(V)
-            else
-                return - fssd_H₁_opt_factor(ker, p, xs, V; ε = ε, β_H₁ = β_H₁)
-            end
-        end
-    end
+    # pack and combine
+    θ₀ = test_locations_only ? pack(vs) : pack(k, vs)
 
     # define gradient
     if diff == :forward
-        # ∇f! = (F, θ) -> ForwardDiff.gradient!(F, f, θ)
-        ∇f! = nothing
+        ∇f! = (F, θ) -> ForwardDiff.gradient!(F, f, θ)
+        # ∇f! = nothing
     elseif diff == :backward
         ∇f! = (F, ζ) -> ReverseDiff.gradient!(F, f, ζ)
     elseif diff == :difference
@@ -472,11 +524,11 @@ function perform(k::Kernel, vs, xs, p; α = 0.05, num_simulate = 1000)
     J = size(vs, 2)
 
     # compute
-    Ξ_xs = [Ξ(k, p, xs, vs[:, i], J) for i = 1:J]
-    test_stat = n * fssd_from_Ξ(Ξ_xs)
+    τ_xs = τ_from_Ξ([Ξ(k, p, xs, vs[:, i], J) for i = 1:J])
+    test_stat = n * fssd_from_τ(τ_xs)
 
     # compute asymptotics under H₀
-    μ, Σ̂ = Σₚ(τ_from_Ξ(Ξ_xs))
+    μ, Σ̂ = Σₚ(τ_xs)
 
     # HACK: this sometimes end up with complex-valued eigenvalues (imaginary party < e^{-18}) → conert to real
     ω = real.(eigvals(Σ̂))

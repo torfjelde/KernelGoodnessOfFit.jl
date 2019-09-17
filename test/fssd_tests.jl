@@ -152,6 +152,12 @@ end
     @test size(Ξ(k, p, xs, v, J)) == (n, )
     @test size(Ξ(k, p, xs, vs)) == (n, J)
 
+    # test objective-maker for `FSSDopt` on univariate distribution
+    using KernelGoodnessOfFit: make_objective, pack, unpack
+    obj_f = make_objective(k, p, xs, vs, Val{false}())
+    obj_t = make_objective(k, p, xs, vs, Val{true}())
+    @test obj_f(pack(k, vs)) == obj_t(vs)
+
     # Multivariate
     d = 2
     p = MvNormal(ones(d), ones(d))
@@ -166,6 +172,11 @@ end
     @test size(Ξ(k, p, x, vs, J)) == (d, J)
     @test size(Ξ(k, p, xs, v, J)) == (d, n)
     @test size(Ξ(k, p, xs, vs, J)) == (d, n, J)
+
+    # test objective-maker for `FSSDopt` on multivariate distribution
+    obj_f = make_objective(k, p, xs, vs, Val{false}())
+    obj_t = make_objective(k, p, xs, vs, Val{true}())
+    @test obj_f(pack(k, vs)) == obj_t(pack(vs))
 
     # @btime Ξ($k, $p, $xs, $vs, $J)
     # @btime [Ξ($k, $p, $xs, $vs[:, i], $J) for i = 1:$J]
