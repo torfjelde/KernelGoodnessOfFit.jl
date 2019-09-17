@@ -90,6 +90,30 @@ function FSSDopt(
     FSSDopt(res.stat, res.p_val, k_new, V, nsim, train_test_ratio)
 end
 
+function FSSDopt(
+    x::AbstractArray{T1, 1},
+    q::Distribution,
+    k::Kernel,
+    V::AbstractArray{T2, 1};
+    nsim = 3000, train_test_ratio = 0.5, kwargs...
+) where {T1, T2}
+    n = length(x)
+    J = size(V)
+
+    split_idx = Integer(floor(n * train_test_ratio))
+    train = @view x[1:split_idx]
+    test = @view x[split_idx + 1:end]
+
+    # update kernel parameters inplace
+    kernel_params, V, opt_res = optimize_power(k, V, train, q; kwargs...)
+
+    # update kernel
+    k_new = update(k, kernel_params...)
+
+    res = perform(k_new, V, test, q; num_simulate = nsim)
+    FSSDopt(res.stat, res.p_val, k_new, V, nsim, train_test_ratio)
+end
+
 FSSDopt(x::AbstractArray, q, k::Kernel; J::Int = 5, kwargs...) = begin
     # initialization
     p = fit_mle(MvNormal, x)
@@ -180,22 +204,23 @@ function ξ(k::Kernel, p::UnivariateDistribution, x::Real, v::Real)
     return logp_dx * kernel(k, x, v) + kdx
 end
 
-Ξ(k::Kernel, p::UnivariateDistribution, x::Real, vs::AbstractVector) = ξ.(k, p, x, vs)
-Ξ(k::Kernel, p::UnivariateDistribution, xs::AbstractVector, v::Real) = ξ.(k, p, xs, v)
-function Ξ(k::Kernel, p::UnivariateDistribution, xs::AbstractVector, vs::AbstractVector)
-    J = length(vs)
-    return hcat([ξ.(k, p, xs, vs[i]) for i = 1:J]...)
+Ξ(k::Kernel, p::UnivariateDistribution, x::Real, vs::AbstractVector, J::Int=length(vs)) = ξ.(k, p, x, vs) ./ sqrt(J)
+Ξ(k::Kernel, p::UnivariateDistribution, xs::AbstractVector, v::Real, J::Int) = ξ.(k, p, xs, v) ./ sqrt(J)
+function Ξ(k::Kernel, p::UnivariateDistribution, xs::AbstractVector, vs::AbstractVector, J::Int=length(vs))
+    return hcat([ξ.(k, p, xs, vs[i] ./ sqrt(J)) for i = 1:J]...)
 end
 
-function Ξ(k::Kernel, p::MultivariateDistribution, x::AbstractVector, vs::AbstractMatrix)
-    return mapslices(v -> ξ(k, p, x, v), vs; dims = 1)
+function Ξ(k::Kernel, p::MultivariateDistribution, x::AbstractVector, vs::AbstractMatrix, J::Int=size(vs, 2))
+    d = size(x, 1)
+    return mapslices(v -> ξ(k, p, x, v) / sqrt(d * J), vs; dims = 1)
 end
-function Ξ(k::Kernel, p::MultivariateDistribution, xs::AbstractMatrix, v::AbstractVector)
-    return mapslices(x -> ξ(k, p, x, v), xs; dims = 1)
+function Ξ(k::Kernel, p::MultivariateDistribution, xs::AbstractMatrix, v::AbstractVector, J::Int)
+    d = size(xs, 1)
+    return mapslices(x -> ξ(k, p, x, v) / sqrt(d * J), xs; dims = 1)
 end
-function Ξ(k::Kernel, p::MultivariateDistribution, xs::AbstractMatrix, vs::AbstractMatrix)
-    J = size(vs, 2)
-    return cat([Ξ(k, p, xs, vs[:, i]) for i = 1:J]...; dims = 3)
+function Ξ(k::Kernel, p::MultivariateDistribution, xs::AbstractMatrix, vs::AbstractMatrix, J::Int=size(vs, 2))
+    d = size(xs, 1)
+    return cat([Ξ(k, p, xs, vs[:, i], J) for i = 1:J]...; dims = 3)
 end
 
 function compute_Ξ(k, p, xs, vs)
@@ -217,7 +242,7 @@ function compute_Ξ(k, p::D where D <: Distribution{Univariate, Continuous}, xs,
 end
 
 
-function fssd(Ξ)
+function fssd_from_Ξ(Ξ)
     J = size(Ξ)[1]
     d, n = size(Ξ[1])
 
@@ -235,6 +260,12 @@ function fssd(Ξ)
     tot
 end
 
+function fssd_from_τ(τ)
+    n = size(τ, 2)
+    tmp = τ' * τ
+    return (sum(tmp) - sum(diag(tmp))) / (n * (n - 1))
+end
+
 function fssd(k, p, xs, vs)
     J = size(vs)[2]  # number of test points
     n = size(xs)[2]  # number of samples
@@ -242,8 +273,8 @@ function fssd(k, p, xs, vs)
 
     tot = 0.0
 
-    Ξ = compute_Ξ(k, p, xs, vs)
-    return fssd(Ξ)
+    Ξ_xs = [Ξ(k, p, xs, vs[:, i], J) for i = 1:J]
+    return fssd_from_Ξ(Ξ_xs)
 end
 
 function fssd_old(k, p, xs, vs)
@@ -278,8 +309,8 @@ function fssd_old(k, p, xs, vs)
     tot
 end
 
-function τ_from_Ξ(Ξ)
-    vcat(Ξ...)
+function τ_from_Ξ(Ξ_xs)
+    vcat(Ξ_xs...)
 end
 
 function Σₚ(τ)
@@ -305,9 +336,10 @@ end
 end
 
 function fssd_H₁_opt_factor(k, p, xs, vs; ε = 0.01, β_H₁ = 0.01)
-    Ξ = compute_Ξ(k, p, xs, vs)
-    s = fssd(Ξ)
-    τ = τ_from_Ξ(Ξ)
+    J = size(vs, 2)
+    Ξ_xs = [Ξ(k, p, xs, vs[:, i], J) for i = 1:J]
+    s = fssd_from_Ξ(Ξ_xs)
+    τ = τ_from_Ξ(Ξ_xs)
     μ, Σ = Σₚ(τ)
     σ₁ = σ²_H₁(μ, Σ)
 
@@ -437,13 +469,14 @@ end
 
 function perform(k::Kernel, vs, xs, p; α = 0.05, num_simulate = 1000)
     d, n = size(xs)
+    J = size(vs, 2)
 
     # compute
-    Ξ = compute_Ξ(k, p, xs, vs)
-    test_stat = n * fssd(Ξ)
+    Ξ_xs = [Ξ(k, p, xs, vs[:, i], J) for i = 1:J]
+    test_stat = n * fssd_from_Ξ(Ξ_xs)
 
     # compute asymptotics under H₀
-    μ, Σ̂ = Σₚ(τ_from_Ξ(Ξ))
+    μ, Σ̂ = Σₚ(τ_from_Ξ(Ξ_xs))
 
     # HACK: this sometimes end up with complex-valued eigenvalues (imaginary party < e^{-18}) → conert to real
     ω = real.(eigvals(Σ̂))
