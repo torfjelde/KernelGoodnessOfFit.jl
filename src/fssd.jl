@@ -166,7 +166,7 @@ pvalue(t::FSSDrand) = t.p_val
 # asymptotic (normal) distribution under H₁
 
 # Compute ∇ of 
-function ξ(k::Kernel, p::Distribution, x::AbstractVector, v::AbstractVector)
+function ξ(k::Kernel, p::Distribution, x, v)
     logp_dx = gradlogpdf(p, x)
     kdx = KernelGoodnessOfFit.k_dx(k, x, v)
 

@@ -73,7 +73,7 @@ end
     #   ∂₂ⁱ (∂₁ʲ k(x, y))
     # = ∂₂ⁱ (- γ⁻² * k(x, y) * (xʲ - yʲ))
     # = - γ⁻² [ (∂₂ⁱ k(x, y)) * (xʲ - yʲ) + k(x, y) * ∂₂ⁱ (xʲ - yʲ) ]
-    # FIXME: there's a sign-error here somewhere
+    # FIXME: there's a sign-error here somewhere (though code is correct because I've checked with ForwardDiff:) )
     # = - γ⁻² [ - γ⁻² k(x, y) * (xⁱ - yⁱ) * (xʲ - yʲ) + k(x, y) * δⁱʲ]
     # = - γ⁻² k(x, y) [ - γ⁻²  (xⁱ - yⁱ) * (xʲ - yʲ) + δⁱʲ]
     # = γ⁻² k(x, y) [ γ⁻²  (xⁱ - yⁱ) * (xʲ - yʲ) - δⁱʲ]
